@@ -9,10 +9,11 @@ import {
   Texture,
   TextureLoader,
 } from 'three'
-import { GLTFLoader } from 'three-stdlib'
+import { GLTFLoader, STLLoader } from 'three-stdlib'
 
 type ModelViewerProps = {
   modelUrl: string | null
+  modelFormat: 'gltf' | 'stl' | null
   textureUrl: string | null
   canApplyTexture: boolean
   onApplyTexture: () => void
@@ -75,42 +76,80 @@ function createModelMaterial(texture: Texture | null, color = '#92a0b6') {
   })
 }
 
-function LoadedModel({ modelUrl, texture }: { modelUrl: string; texture: Texture | null }) {
+function LoadedModel({
+  modelUrl,
+  modelFormat,
+  texture,
+}: {
+  modelUrl: string
+  modelFormat: 'gltf' | 'stl'
+  texture: Texture | null
+}) {
   const [model, setModel] = useState<Group | null>(null)
 
   useEffect(() => {
     let isMounted = true
-    const loader = new GLTFLoader()
 
-    loader.load(
-      modelUrl,
-      (gltf) => {
-        if (!isMounted) {
-          return
-        }
+    if (modelFormat === 'stl') {
+      const loader = new STLLoader()
 
-        const loadedScene = gltf.scene.clone(true)
-        loadedScene.traverse((child: Object3D) => {
-          if (child instanceof Mesh) {
-            child.castShadow = true
-            child.receiveShadow = true
+      loader.load(
+        modelUrl,
+        (geometry) => {
+          if (!isMounted) {
+            return
           }
-        })
-        setModel(loadedScene)
-      },
-      undefined,
-      () => {
-        if (isMounted) {
-          setModel(null)
-        }
-      },
-    )
+
+          geometry.center()
+          geometry.computeVertexNormals()
+
+          const loadedGroup = new Group()
+          const mesh = new Mesh(geometry, createModelMaterial(texture))
+          mesh.castShadow = true
+          mesh.receiveShadow = true
+          loadedGroup.add(mesh)
+          setModel(loadedGroup)
+        },
+        undefined,
+        () => {
+          if (isMounted) {
+            setModel(null)
+          }
+        },
+      )
+    } else {
+      const loader = new GLTFLoader()
+
+      loader.load(
+        modelUrl,
+        (gltf) => {
+          if (!isMounted) {
+            return
+          }
+
+          const loadedScene = gltf.scene.clone(true)
+          loadedScene.traverse((child: Object3D) => {
+            if (child instanceof Mesh) {
+              child.castShadow = true
+              child.receiveShadow = true
+            }
+          })
+          setModel(loadedScene)
+        },
+        undefined,
+        () => {
+          if (isMounted) {
+            setModel(null)
+          }
+        },
+      )
+    }
 
     return () => {
       isMounted = false
       setModel(null)
     }
-  }, [modelUrl])
+  }, [modelFormat, modelUrl, texture])
 
   useEffect(() => {
     model?.traverse((child: Object3D) => {
@@ -174,6 +213,7 @@ function ProceduralPreviewModel({ texture }: { texture: Texture | null }) {
 
 export function ModelViewer({
   modelUrl,
+  modelFormat,
   textureUrl,
   canApplyTexture,
   onApplyTexture,
@@ -182,7 +222,7 @@ export function ModelViewer({
   const texture = useImageTexture(textureUrl)
 
   useEffect(() => {
-    onModelLoadStatus(modelUrl ? 'Custom model loaded. Click the model to apply selected texture.' : 'Using preview model. Import GLB/GLTF anytime.')
+    onModelLoadStatus(modelUrl ? 'Custom model loaded. Click the model to apply selected texture.' : 'Using preview model. Import GLB, GLTF or STL anytime.')
   }, [modelUrl, onModelLoadStatus])
 
   return (
@@ -194,7 +234,11 @@ export function ModelViewer({
         }
       }}
     >
-      {modelUrl ? <LoadedModel modelUrl={modelUrl} texture={texture} /> : <ProceduralPreviewModel texture={texture} />}
+      {modelUrl && modelFormat ? (
+        <LoadedModel modelUrl={modelUrl} modelFormat={modelFormat} texture={texture} />
+      ) : (
+        <ProceduralPreviewModel texture={texture} />
+      )}
     </group>
   )
 }

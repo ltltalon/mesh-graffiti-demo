@@ -234,8 +234,13 @@ button {
 
 .import-card {
   display: grid;
-  gap: 14px;
+  gap: 10px;
   padding: 14px;
+}
+
+.supported-formats {
+  color: #7c988b;
+  font-size: 12px;
 }
 
 .asset-panel {

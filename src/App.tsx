@@ -50,6 +50,7 @@ function App() {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
   const [appliedTextureUrl, setAppliedTextureUrl] = useState<string | null>(null)
   const [modelUrl, setModelUrl] = useState<string | null>(null)
+  const [modelFormat, setModelFormat] = useState<'gltf' | 'stl' | null>(null)
   const [modelName, setModelName] = useState('Procedural preview model')
   const [editorMessage, setEditorMessage] = useState('Upload an image, select it, then click the model to apply it.')
   const assetsRef = useRef<UploadedTextureAsset[]>([])
@@ -79,6 +80,7 @@ function App() {
 
       return URL.createObjectURL(file)
     })
+    setModelFormat(file.name.toLowerCase().endsWith('.stl') ? 'stl' : 'gltf')
     setModelName(file.name)
     setEditorMessage(`${file.name} loaded. Select an image and click the model surface.`)
   }, [])
@@ -181,12 +183,13 @@ function App() {
             <label className="secondary-button file-button">
               <input
                 type="file"
-                accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
+                accept=".glb,.gltf,.stl,model/gltf-binary,model/gltf+json,model/stl"
                 onChange={(event) => handleModelUpload(event.target.files)}
               />
               <FileUp size={16} />
               Choose Model
             </label>
+            <span className="supported-formats">Supports GLB, GLTF, STL</span>
           </div>
 
           <AssetPanel
@@ -221,6 +224,7 @@ function App() {
           </div>
           <Scene
             modelUrl={modelUrl}
+            modelFormat={modelFormat}
             appliedTextureUrl={appliedTextureUrl}
             canApplyTexture={Boolean(selectedAsset)}
             onApplyTexture={handleApplyTexture}

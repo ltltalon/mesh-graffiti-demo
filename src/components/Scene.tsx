@@ -4,6 +4,7 @@ import { ModelViewer } from './ModelViewer'
 
 type SceneProps = {
   modelUrl: string | null
+  modelFormat: 'gltf' | 'stl' | null
   appliedTextureUrl: string | null
   canApplyTexture: boolean
   onApplyTexture: () => void
@@ -12,6 +13,7 @@ type SceneProps = {
 
 export function Scene({
   modelUrl,
+  modelFormat,
   appliedTextureUrl,
   canApplyTexture,
   onApplyTexture,
@@ -25,6 +27,7 @@ export function Scene({
       <directionalLight position={[-3, 2.4, -2.2]} color="#8ea0ba" intensity={0.55} />
       <ModelViewer
         modelUrl={modelUrl}
+        modelFormat={modelFormat}
         textureUrl={appliedTextureUrl}
         canApplyTexture={canApplyTexture}
         onApplyTexture={onApplyTexture}
