@@ -11,7 +11,7 @@
 .topbar,
 .workspace,
 .statusbar {
-  width: min(1560px, 100%);
+  width: min(1840px, 100%);
   margin: 0 auto;
 }
 
@@ -120,12 +120,22 @@ button {
   color: #bff8d5;
 }
 
+.file-button {
+  cursor: pointer;
+}
+
+.file-button input,
+.upload-zone input {
+  display: none;
+}
+
 .workspace {
   display: grid;
-  grid-template-columns: 310px minmax(480px, 1fr) 350px;
+  grid-template-columns: 300px minmax(560px, 1fr) 330px;
+  align-items: center;
   gap: 16px;
-  height: calc(100vh - 136px);
-  min-height: 720px;
+  height: calc(100vh - 124px);
+  min-height: 760px;
 }
 
 .panel,
@@ -241,6 +251,7 @@ button {
   text-align: center;
   border-style: dashed;
   border-color: rgba(0, 208, 132, 0.32);
+  cursor: pointer;
 }
 
 .upload-zone svg {
@@ -267,16 +278,40 @@ button {
 }
 
 .asset-card {
+  display: block;
+  width: 100%;
   padding: 8px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .asset-thumb {
+  display: block;
+  width: 100%;
   height: 56px;
+  object-fit: cover;
   margin-bottom: 8px;
   border-radius: 6px;
   background:
     linear-gradient(135deg, rgba(183, 255, 74, 0.85), rgba(0, 208, 132, 0.22)),
     repeating-linear-gradient(45deg, transparent 0 8px, rgba(255, 255, 255, 0.15) 8px 10px);
+}
+
+.asset-card.selected {
+  border-color: rgba(0, 208, 132, 0.72);
+  background: rgba(0, 208, 132, 0.12);
+}
+
+.asset-card.empty {
+  cursor: default;
+}
+
+.asset-thumb.empty {
+  border: 1px dashed rgba(0, 208, 132, 0.24);
+  background:
+    linear-gradient(135deg, rgba(0, 208, 132, 0.08), rgba(183, 255, 74, 0.04)),
+    repeating-linear-gradient(45deg, transparent 0 8px, rgba(255, 255, 255, 0.04) 8px 10px);
 }
 
 .asset-card:nth-child(2) .asset-thumb {
@@ -293,9 +328,14 @@ button {
 
 .stage {
   position: relative;
+  justify-self: center;
+  width: min(100%, calc(100vh - 124px));
+  aspect-ratio: 1;
   min-width: 0;
+  max-height: 100%;
   overflow: hidden;
   border-radius: 12px;
+  background: #020303;
 }
 
 .viewport-status {
@@ -311,6 +351,8 @@ button {
   border: 1px solid rgba(0, 208, 132, 0.16);
   border-radius: 8px;
   background: rgba(3, 8, 6, 0.72);
+  max-width: min(520px, calc(100% - 32px));
+  line-height: 1.25;
 }
 
 .live-dot {
@@ -319,6 +361,52 @@ button {
   border-radius: 999px;
   background: #00d084;
   box-shadow: 0 0 14px rgba(0, 208, 132, 0.8);
+}
+
+.scene-switcher {
+  position: absolute;
+  z-index: 4;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px;
+  border: 1px solid rgba(183, 255, 74, 0.14);
+  border-radius: 10px;
+  color: #cfe9da;
+  background: rgba(3, 8, 6, 0.76);
+  backdrop-filter: blur(16px);
+}
+
+.scene-switcher > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  color: #8fb3a2;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.scene-switcher > div {
+  display: flex;
+  gap: 4px;
+}
+
+.scene-mode {
+  min-width: 54px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #8fb3a2;
+  background: transparent;
+  cursor: pointer;
+}
+
+.scene-mode.active {
+  color: #03100a;
+  background: #00d084;
 }
 
 .scene-canvas {
@@ -338,6 +426,160 @@ button {
   border-radius: 10px;
   background: rgba(4, 9, 7, 0.82);
   backdrop-filter: blur(16px);
+}
+
+.lighting-panel {
+  position: absolute;
+  top: 92px;
+  right: 0;
+  z-index: 20;
+  width: min(286px, calc(100% - 32px));
+  padding: 12px;
+  border: 1px solid rgba(183, 255, 74, 0.16);
+  border-radius: 10px;
+  color: #e8f5ec;
+  background: rgba(4, 9, 7, 0.9);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(18px);
+  transition: transform 180ms ease, width 180ms ease, padding 180ms ease;
+}
+
+.lighting-panel.open {
+  transform: translateX(-16px);
+}
+
+.lighting-panel.collapsed {
+  width: 48px;
+  min-height: 178px;
+  padding: 8px;
+  transform: translateX(-16px);
+}
+
+.lighting-content {
+  transition: opacity 140ms ease;
+}
+
+.lighting-panel.collapsed .lighting-content {
+  pointer-events: none;
+  opacity: 0;
+}
+
+.lighting-toggle {
+  position: absolute;
+  top: 50%;
+  left: -38px;
+  display: grid;
+  width: 38px;
+  min-height: 118px;
+  place-items: center;
+  padding: 10px 0;
+  transform: translateY(-50%);
+  border: 1px solid rgba(183, 255, 74, 0.16);
+  border-right: 0;
+  border-radius: 10px 0 0 10px;
+  color: #06120c;
+  background: linear-gradient(180deg, #b7ff4a, #00d084);
+  box-shadow: -12px 14px 34px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.lighting-toggle span {
+  writing-mode: vertical-rl;
+  color: #06120c;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.lighting-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 2px 10px;
+}
+
+.lighting-header strong {
+  color: #f6fff9;
+  font-size: 14px;
+}
+
+.lighting-header svg {
+  color: #00d084;
+}
+
+.lighting-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.lighting-preset {
+  display: grid;
+  gap: 7px;
+  min-height: 82px;
+  padding: 10px 8px;
+  color: #9fb7aa;
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+
+.lighting-preset svg {
+  color: #9fb7aa;
+}
+
+.lighting-preset strong,
+.lighting-preset small {
+  display: block;
+}
+
+.lighting-preset strong {
+  color: #eefbf2;
+  font-size: 12px;
+}
+
+.lighting-preset small {
+  margin-top: 2px;
+  color: #71897c;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.lighting-preset.active {
+  color: #03100a;
+  border-color: rgba(183, 255, 74, 0.52);
+  background: linear-gradient(135deg, #b7ff4a, #00d084);
+}
+
+.lighting-preset.active svg,
+.lighting-preset.active strong,
+.lighting-preset.active small {
+  color: #03100a;
+}
+
+.custom-light-placeholder {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 11px;
+  border: 1px dashed rgba(0, 208, 132, 0.32);
+  border-radius: 8px;
+  background: rgba(0, 208, 132, 0.07);
+}
+
+.custom-light-placeholder span {
+  color: #f3fff7;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.custom-light-placeholder small {
+  color: #83a392;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .toolbar-group {
@@ -549,6 +791,20 @@ input[type='range'] {
   }
 
   .stage {
+    width: 100%;
     height: 560px;
+    aspect-ratio: auto;
+  }
+
+  .lighting-panel {
+    top: 88px;
+    right: 0;
+    width: min(286px, calc(100% - 56px));
+  }
+
+  .scene-switcher {
+    left: 12px;
+    right: 12px;
+    justify-content: space-between;
   }
 }
