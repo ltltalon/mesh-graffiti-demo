@@ -35,8 +35,15 @@ function SceneExporter({
     }
 
     const exporter = new GLTFExporter()
+    const exportRoot = scene.getObjectByName('mesh-graffiti-export-root')
+
+    if (!exportRoot) {
+      onExportComplete('Export failed: no model or decals found.')
+      return
+    }
+
     exporter.parse(
-      scene,
+      exportRoot,
       (result) => {
         const blob = result instanceof ArrayBuffer
           ? new Blob([result], { type: 'model/gltf-binary' })
@@ -105,7 +112,7 @@ export function Scene({
       <Environment preset="studio" environmentIntensity={0.35} />
       <OrbitControls
         enablePan
-        minDistance={1.8}
+        minDistance={0.45}
         maxDistance={26}
         target={[0, -0.35, 0]}
         zoomSpeed={0.85}

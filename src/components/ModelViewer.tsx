@@ -259,6 +259,10 @@ function DecalMesh({ decal, preview = false }: { decal: SceneDecal; preview?: bo
     }
   }, [geometry, material])
 
+  if (!texture) {
+    return null
+  }
+
   return <mesh geometry={geometry} material={material} renderOrder={preview ? 20 : 10} userData={{ isDecal: true }} />
 }
 
@@ -360,47 +364,52 @@ export function ModelViewer({
 
   return (
     <>
-      <group
-        onPointerMove={(event) => {
-          setPreviewDecal(createDecalFromPointer(event))
-        }}
-        onPointerLeave={() => setPreviewDecal(null)}
-        onPointerDown={(event) => {
-          pointerStartRef.current = {
-            button: event.nativeEvent.button,
-            time: performance.now(),
-            x: event.nativeEvent.clientX,
-            y: event.nativeEvent.clientY,
-          }
-        }}
-        onPointerUp={(event) => {
-          const pointerStart = pointerStartRef.current
-          pointerStartRef.current = null
+      <group name="mesh-graffiti-export-root">
+        <group
+          onPointerMove={(event) => {
+            setPreviewDecal(createDecalFromPointer(event))
+          }}
+          onPointerLeave={() => setPreviewDecal(null)}
+          onPointerDown={(event) => {
+            pointerStartRef.current = {
+              button: event.nativeEvent.button,
+              time: performance.now(),
+              x: event.nativeEvent.clientX,
+              y: event.nativeEvent.clientY,
+            }
+          }}
+          onPointerUp={(event) => {
+            const pointerStart = pointerStartRef.current
+            pointerStartRef.current = null
 
-          if (!pointerStart || pointerStart.button !== 0 || event.nativeEvent.button !== 0) {
-            return
-          }
+            if (!pointerStart || pointerStart.button !== 0 || event.nativeEvent.button !== 0) {
+              return
+            }
 
-          const elapsed = performance.now() - pointerStart.time
-          const movement = Math.hypot(
-            event.nativeEvent.clientX - pointerStart.x,
-            event.nativeEvent.clientY - pointerStart.y,
-          )
+            const elapsed = performance.now() - pointerStart.time
+            const movement = Math.hypot(
+              event.nativeEvent.clientX - pointerStart.x,
+              event.nativeEvent.clientY - pointerStart.y,
+            )
 
-          if (elapsed > 220 || movement > 6) {
-            return
-          }
+            if (elapsed > 220 || movement > 6) {
+              return
+            }
 
-          const nextDecal = createDecalFromPointer(event, crypto.randomUUID())
+            const nextDecal = createDecalFromPointer(event, crypto.randomUUID())
 
-          if (!nextDecal) {
-            return
-          }
+            if (!nextDecal) {
+              return
+            }
 
-          onCreateDecal(nextDecal)
-        }}
-      >
-        {modelUrl && modelFormat ? <LoadedModel modelUrl={modelUrl} modelFormat={modelFormat} /> : <ProceduralPreviewModel />}
+            onCreateDecal(nextDecal)
+          }}
+        >
+          {modelUrl && modelFormat ? <LoadedModel modelUrl={modelUrl} modelFormat={modelFormat} /> : <ProceduralPreviewModel />}
+        </group>
+        {decals.map((decal) => (
+          <DecalMesh decal={decal} key={decal.id} />
+        ))}
       </group>
       {previewDecal && (
         <>
@@ -408,9 +417,6 @@ export function ModelViewer({
           <DecalOrientationHelper decal={previewDecal} />
         </>
       )}
-      {decals.map((decal) => (
-        <DecalMesh decal={decal} key={decal.id} />
-      ))}
     </>
   )
 }
