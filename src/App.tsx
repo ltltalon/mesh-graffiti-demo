@@ -25,7 +25,12 @@ import { AssetPanel } from './components/AssetPanel'
 import type { SceneDecal } from './components/ModelViewer'
 import { Scene } from './components/Scene'
 import { Toolbar } from './components/Toolbar'
-import { createTextureAsset, presetTextureAssets, type UploadedTextureAsset } from './lib/textureUtils'
+import {
+  createTextureAsset,
+  presetTextureAssets,
+  readImageAspectRatio,
+  type UploadedTextureAsset,
+} from './lib/textureUtils'
 import type { DecalSettings, ModelFormat } from './state/editorStore'
 
 const workflowSteps = [
@@ -55,10 +60,10 @@ function App() {
   const [modelName, setModelName] = useState('Suitcase.glb')
   const [editorMessage, setEditorMessage] = useState('Select a sticker, then click the model to place a decal.')
   const [decals, setDecals] = useState<SceneDecal[]>([])
-  const [selectedDecalId, setSelectedDecalId] = useState<string | null>(null)
   const [exportRequestId, setExportRequestId] = useState(0)
   const [previewSettings, setPreviewSettings] = useState<DecalSettings>({
     size: 0.72,
+    aspectRatio: 1,
     rotation: 0,
     opacity: 1,
   })
@@ -66,7 +71,6 @@ function App() {
   const modelUrlRef = useRef<string | null>(null)
 
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null
-  const selectedDecal = decals.find((decal) => decal.id === selectedDecalId) ?? null
 
   useEffect(() => {
     assetsRef.current = assets
@@ -94,14 +98,19 @@ function App() {
     setModelFormat(modelExtension === 'stl' ? 'stl' : modelExtension === 'obj' ? 'obj' : 'gltf')
     setModelName(file.name)
     setDecals([])
-    setSelectedDecalId(null)
     setEditorMessage(`${file.name} loaded. Select a sticker and click the model surface.`)
   }, [])
 
-  const handleAssetUpload = useCallback((files: FileList | null) => {
-    const nextAssets = Array.from(files ?? [])
+  const handleAssetUpload = useCallback(async (files: FileList | null) => {
+    const nextAssets = await Promise.all(Array.from(files ?? [])
       .filter((file) => file.type.startsWith('image/'))
-      .map(createTextureAsset)
+      .map(async (file) => {
+        const asset = createTextureAsset(file)
+        return {
+          ...asset,
+          aspectRatio: await readImageAspectRatio(asset.url),
+        }
+      }))
 
     if (nextAssets.length === 0) {
       setEditorMessage('Please upload PNG, JPG or WebP image assets.')
@@ -110,6 +119,10 @@ function App() {
 
     setAssets((currentAssets) => [...nextAssets, ...currentAssets])
     setSelectedAssetId(nextAssets[0].id)
+    setPreviewSettings((currentSettings) => ({
+      ...currentSettings,
+      aspectRatio: nextAssets[0].aspectRatio,
+    }))
     setEditorMessage(`${nextAssets[0].name} selected. Click the model to place it.`)
   }, [])
 
@@ -119,49 +132,20 @@ function App() {
 
   const handleCreateDecal = useCallback((decal: SceneDecal) => {
     setDecals((currentDecals) => [...currentDecals, decal])
-    setSelectedDecalId(decal.id)
-    setEditorMessage(`Decal placed on ${decal.targetName}. Adjust scale, rotation, opacity or delete it.`)
+    setEditorMessage(`Decal placed on ${decal.targetName}. The controls now affect the next decal preview.`)
   }, [])
-
-  const updateSelectedDecal = useCallback((updates: Partial<Pick<SceneDecal, 'size' | 'rotation' | 'opacity'>>) => {
-    if (!selectedDecalId) {
-      return
-    }
-
-    setDecals((currentDecals) =>
-      currentDecals.map((decal) => (decal.id === selectedDecalId ? { ...decal, ...updates } : decal)),
-    )
-  }, [selectedDecalId])
 
   const updateDecalScale = useCallback((nextSize: number) => {
     setPreviewSettings((currentSettings) => ({ ...currentSettings, size: nextSize }))
-    updateSelectedDecal({ size: [nextSize, nextSize, nextSize] })
-  }, [updateSelectedDecal])
+  }, [])
 
   const updateDecalRotation = useCallback((nextRotation: number) => {
     setPreviewSettings((currentSettings) => ({ ...currentSettings, rotation: nextRotation }))
-
-    if (selectedDecal) {
-      updateSelectedDecal({
-        rotation: [selectedDecal.rotation[0], selectedDecal.rotation[1], nextRotation],
-      })
-    }
-  }, [selectedDecal, updateSelectedDecal])
+  }, [])
 
   const updateDecalOpacity = useCallback((nextOpacity: number) => {
     setPreviewSettings((currentSettings) => ({ ...currentSettings, opacity: nextOpacity }))
-    updateSelectedDecal({ opacity: nextOpacity })
-  }, [updateSelectedDecal])
-
-  const deleteSelectedDecal = useCallback(() => {
-    if (!selectedDecalId) {
-      return
-    }
-
-    setDecals((currentDecals) => currentDecals.filter((decal) => decal.id !== selectedDecalId))
-    setSelectedDecalId(null)
-    setEditorMessage('Selected decal deleted.')
-  }, [selectedDecalId])
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -252,6 +236,12 @@ function App() {
             onSelectAsset={(assetId) => {
               setSelectedAssetId(assetId)
               const asset = assets.find((item) => item.id === assetId)
+              if (asset) {
+                setPreviewSettings((currentSettings) => ({
+                  ...currentSettings,
+                  aspectRatio: asset.aspectRatio,
+                }))
+              }
               setEditorMessage(asset ? `${asset.name} selected. Click the model to place it.` : editorMessage)
             }}
           />
@@ -289,16 +279,13 @@ function App() {
             onExportComplete={setEditorMessage}
           />
           <Toolbar />
-          {selectedDecal && (
-            <div className="decal-popover" aria-label="Placed decal controls">
+          {selectedAsset && (
+            <div className="decal-popover" aria-label="Next decal controls">
               <div className="decal-popover-header">
                 <span>
-                  Editing decal
-                  <small>{selectedAsset?.name ?? 'Selected sticker'}</small>
+                  Next decal
+                  <small>{selectedAsset.name}</small>
                 </span>
-                <button className="danger-button compact" type="button" onClick={deleteSelectedDecal}>
-                  Delete
-                </button>
               </div>
               <label>
                 Size
@@ -307,7 +294,7 @@ function App() {
                   min="0.18"
                   max="2.8"
                   step="0.03"
-                  value={selectedDecal.size[0]}
+                  value={previewSettings.size}
                   onChange={(event) => updateDecalScale(Number(event.target.value))}
                 />
               </label>
@@ -318,7 +305,7 @@ function App() {
                   min="-3.14"
                   max="3.14"
                   step="0.01"
-                  value={selectedDecal.rotation[2]}
+                  value={previewSettings.rotation}
                   onChange={(event) => updateDecalRotation(Number(event.target.value))}
                 />
               </label>
@@ -329,7 +316,7 @@ function App() {
                   min="0.1"
                   max="1"
                   step="0.05"
-                  value={selectedDecal.opacity}
+                  value={previewSettings.opacity}
                   onChange={(event) => updateDecalOpacity(Number(event.target.value))}
                 />
               </label>
@@ -465,27 +452,27 @@ function App() {
               <Move3D size={16} />
               Decal Controls
             </div>
-            {selectedDecal ? (
+            {selectedAsset ? (
               <>
                 <label>
-                  Scale
+                  Next decal scale
                   <input
                     type="range"
                     min="0.2"
                     max="2.4"
                     step="0.05"
-                    value={selectedDecal.size[0]}
+                    value={previewSettings.size}
                     onChange={(event) => updateDecalScale(Number(event.target.value))}
                   />
                 </label>
                 <label>
-                  Rotate
+                  Next decal direction
                   <input
                     type="range"
                     min="-3.14"
                     max="3.14"
                     step="0.01"
-                    value={selectedDecal.rotation[2]}
+                    value={previewSettings.rotation}
                     onChange={(event) => updateDecalRotation(Number(event.target.value))}
                   />
                 </label>
@@ -496,16 +483,13 @@ function App() {
                     min="0.1"
                     max="1"
                     step="0.05"
-                    value={selectedDecal.opacity}
+                    value={previewSettings.opacity}
                     onChange={(event) => updateDecalOpacity(Number(event.target.value))}
                   />
                 </label>
-                <button className="danger-button" type="button" onClick={deleteSelectedDecal}>
-                  Delete Decal
-                </button>
               </>
             ) : (
-              <p className="empty-control-copy">Place a sticker on the model to edit scale, rotation and opacity.</p>
+              <p className="empty-control-copy">Select a sticker to adjust the next decal size, direction and opacity.</p>
             )}
           </section>
         </aside>

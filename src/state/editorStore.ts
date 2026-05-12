@@ -15,6 +15,7 @@ export type DecalLayer = {
 
 export type DecalSettings = {
   size: number
+  aspectRatio: number
   rotation: number
   opacity: number
 }

@@ -1,9 +1,9 @@
 import type { ThreeEvent } from '@react-three/fiber'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ClampToEdgeWrapping,
-  DoubleSide,
   Euler,
+  FrontSide,
   Group,
   Mesh,
   MeshBasicMaterial,
@@ -248,7 +248,7 @@ function DecalMesh({ decal, preview = false }: { decal: SceneDecal; preview?: bo
       depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -4,
-      side: DoubleSide,
+      side: FrontSide,
     })
   }, [decal.opacity, preview, texture])
 
@@ -281,6 +281,40 @@ function getDecalProjection(event: ThreeEvent<PointerEvent>, rotationOffset = 0)
   }
 }
 
+function getStableDecalSize(settings: DecalSettings): [number, number, number] {
+  const height = settings.size
+  const width = settings.size * settings.aspectRatio
+  const depth = Math.max(width, height) * 0.6
+
+  return [width, height, depth]
+}
+
+function DecalOrientationHelper({ decal }: { decal: SceneDecal }) {
+  const rotation = useMemo(() => new Euler(...decal.rotation), [decal.rotation])
+
+  return (
+    <group position={decal.position} rotation={rotation} renderOrder={30}>
+      <mesh position={[0, decal.size[1] * 0.58, decal.size[2] * 0.04]}>
+        <boxGeometry args={[decal.size[0] * 0.08, decal.size[1] * 0.28, 0.012]} />
+        <meshBasicMaterial color="#b7ff4a" transparent opacity={0.9} depthTest={false} />
+      </mesh>
+      <mesh position={[0, decal.size[1] * 0.75, decal.size[2] * 0.04]} rotation={[0, 0, Math.PI / 4]}>
+        <boxGeometry args={[decal.size[0] * 0.12, decal.size[0] * 0.12, 0.012]} />
+        <meshBasicMaterial color="#00d084" transparent opacity={0.9} depthTest={false} />
+      </mesh>
+      <lineSegments>
+        <edgesGeometry args={[new DecalGeometry(
+          decal.targetMesh,
+          new Vector3(...decal.position),
+          new Euler(...decal.rotation),
+          new Vector3(...decal.size),
+        )]} />
+        <lineBasicMaterial color="#b7ff4a" transparent opacity={0.82} depthTest={false} />
+      </lineSegments>
+    </group>
+  )
+}
+
 export function ModelViewer({
   modelUrl,
   modelFormat,
@@ -293,6 +327,7 @@ export function ModelViewer({
   onModelLoadStatus,
 }: ModelViewerProps) {
   const [previewDecal, setPreviewDecal] = useState<SceneDecal | null>(null)
+  const pointerStartRef = useRef<{ button: number; time: number; x: number; y: number } | null>(null)
 
   useEffect(() => {
     onModelLoadStatus(modelUrl ? 'Custom model loaded. Select a sticker, then click the model to place a decal.' : 'Using preview model. Import GLB, GLTF, OBJ or STL anytime.')
@@ -318,7 +353,7 @@ export function ModelViewer({
       position: point.toArray(),
       normal: normal.toArray(),
       rotation: rotation.toArray().slice(0, 3) as [number, number, number],
-      size: [previewSettings.size, previewSettings.size, previewSettings.size],
+      size: getStableDecalSize(previewSettings),
       opacity: previewSettings.opacity,
     }
   }
@@ -327,12 +362,35 @@ export function ModelViewer({
     <>
       <group
         onPointerMove={(event) => {
-          event.stopPropagation()
           setPreviewDecal(createDecalFromPointer(event))
         }}
         onPointerLeave={() => setPreviewDecal(null)}
         onPointerDown={(event) => {
-          event.stopPropagation()
+          pointerStartRef.current = {
+            button: event.nativeEvent.button,
+            time: performance.now(),
+            x: event.nativeEvent.clientX,
+            y: event.nativeEvent.clientY,
+          }
+        }}
+        onPointerUp={(event) => {
+          const pointerStart = pointerStartRef.current
+          pointerStartRef.current = null
+
+          if (!pointerStart || pointerStart.button !== 0 || event.nativeEvent.button !== 0) {
+            return
+          }
+
+          const elapsed = performance.now() - pointerStart.time
+          const movement = Math.hypot(
+            event.nativeEvent.clientX - pointerStart.x,
+            event.nativeEvent.clientY - pointerStart.y,
+          )
+
+          if (elapsed > 220 || movement > 6) {
+            return
+          }
+
           const nextDecal = createDecalFromPointer(event, crypto.randomUUID())
 
           if (!nextDecal) {
@@ -344,7 +402,12 @@ export function ModelViewer({
       >
         {modelUrl && modelFormat ? <LoadedModel modelUrl={modelUrl} modelFormat={modelFormat} /> : <ProceduralPreviewModel />}
       </group>
-      {previewDecal && <DecalMesh decal={previewDecal} preview />}
+      {previewDecal && (
+        <>
+          <DecalMesh decal={previewDecal} preview />
+          <DecalOrientationHelper decal={previewDecal} />
+        </>
+      )}
       {decals.map((decal) => (
         <DecalMesh decal={decal} key={decal.id} />
       ))}
