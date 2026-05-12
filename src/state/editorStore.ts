@@ -13,6 +13,12 @@ export type DecalLayer = {
   opacity: number
 }
 
+export type DecalSettings = {
+  size: number
+  rotation: number
+  opacity: number
+}
+
 export type EditorState = {
   mode: EditorMode
   selectedAssetId: string | null

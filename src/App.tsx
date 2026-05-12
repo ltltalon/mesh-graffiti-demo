@@ -26,7 +26,7 @@ import type { SceneDecal } from './components/ModelViewer'
 import { Scene } from './components/Scene'
 import { Toolbar } from './components/Toolbar'
 import { createTextureAsset, presetTextureAssets, type UploadedTextureAsset } from './lib/textureUtils'
-import type { ModelFormat } from './state/editorStore'
+import type { DecalSettings, ModelFormat } from './state/editorStore'
 
 const workflowSteps = [
   { label: 'Import Model', detail: 'Load GLB / OBJ / STL geometry', icon: Box },
@@ -57,6 +57,11 @@ function App() {
   const [decals, setDecals] = useState<SceneDecal[]>([])
   const [selectedDecalId, setSelectedDecalId] = useState<string | null>(null)
   const [exportRequestId, setExportRequestId] = useState(0)
+  const [previewSettings, setPreviewSettings] = useState<DecalSettings>({
+    size: 0.72,
+    rotation: 0,
+    opacity: 1,
+  })
   const assetsRef = useRef<UploadedTextureAsset[]>([])
   const modelUrlRef = useRef<string | null>(null)
 
@@ -127,6 +132,26 @@ function App() {
       currentDecals.map((decal) => (decal.id === selectedDecalId ? { ...decal, ...updates } : decal)),
     )
   }, [selectedDecalId])
+
+  const updateDecalScale = useCallback((nextSize: number) => {
+    setPreviewSettings((currentSettings) => ({ ...currentSettings, size: nextSize }))
+    updateSelectedDecal({ size: [nextSize, nextSize, nextSize] })
+  }, [updateSelectedDecal])
+
+  const updateDecalRotation = useCallback((nextRotation: number) => {
+    setPreviewSettings((currentSettings) => ({ ...currentSettings, rotation: nextRotation }))
+
+    if (selectedDecal) {
+      updateSelectedDecal({
+        rotation: [selectedDecal.rotation[0], selectedDecal.rotation[1], nextRotation],
+      })
+    }
+  }, [selectedDecal, updateSelectedDecal])
+
+  const updateDecalOpacity = useCallback((nextOpacity: number) => {
+    setPreviewSettings((currentSettings) => ({ ...currentSettings, opacity: nextOpacity }))
+    updateSelectedDecal({ opacity: nextOpacity })
+  }, [updateSelectedDecal])
 
   const deleteSelectedDecal = useCallback(() => {
     if (!selectedDecalId) {
@@ -257,12 +282,59 @@ function App() {
             selectedAssetId={selectedAssetId}
             selectedTextureUrl={selectedAsset?.url ?? null}
             canApplyTexture={Boolean(selectedAsset)}
+            previewSettings={previewSettings}
             onCreateDecal={handleCreateDecal}
             onModelLoadStatus={handleModelLoadStatus}
             exportRequestId={exportRequestId}
             onExportComplete={setEditorMessage}
           />
           <Toolbar />
+          {selectedDecal && (
+            <div className="decal-popover" aria-label="Placed decal controls">
+              <div className="decal-popover-header">
+                <span>
+                  Editing decal
+                  <small>{selectedAsset?.name ?? 'Selected sticker'}</small>
+                </span>
+                <button className="danger-button compact" type="button" onClick={deleteSelectedDecal}>
+                  Delete
+                </button>
+              </div>
+              <label>
+                Size
+                <input
+                  type="range"
+                  min="0.18"
+                  max="2.8"
+                  step="0.03"
+                  value={selectedDecal.size[0]}
+                  onChange={(event) => updateDecalScale(Number(event.target.value))}
+                />
+              </label>
+              <label>
+                Direction
+                <input
+                  type="range"
+                  min="-3.14"
+                  max="3.14"
+                  step="0.01"
+                  value={selectedDecal.rotation[2]}
+                  onChange={(event) => updateDecalRotation(Number(event.target.value))}
+                />
+              </label>
+              <label>
+                Opacity
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1"
+                  step="0.05"
+                  value={selectedDecal.opacity}
+                  onChange={(event) => updateDecalOpacity(Number(event.target.value))}
+                />
+              </label>
+            </div>
+          )}
           <aside
             className={isLightingOpen ? 'lighting-panel open' : 'lighting-panel collapsed'}
             aria-label="Environment lighting controls"
@@ -403,10 +475,7 @@ function App() {
                     max="2.4"
                     step="0.05"
                     value={selectedDecal.size[0]}
-                    onChange={(event) => {
-                      const nextSize = Number(event.target.value)
-                      updateSelectedDecal({ size: [nextSize, nextSize, nextSize] })
-                    }}
+                    onChange={(event) => updateDecalScale(Number(event.target.value))}
                   />
                 </label>
                 <label>
@@ -417,11 +486,7 @@ function App() {
                     max="3.14"
                     step="0.01"
                     value={selectedDecal.rotation[2]}
-                    onChange={(event) => {
-                      updateSelectedDecal({
-                        rotation: [selectedDecal.rotation[0], selectedDecal.rotation[1], Number(event.target.value)],
-                      })
-                    }}
+                    onChange={(event) => updateDecalRotation(Number(event.target.value))}
                   />
                 </label>
                 <label>
@@ -432,7 +497,7 @@ function App() {
                     max="1"
                     step="0.05"
                     value={selectedDecal.opacity}
-                    onChange={(event) => updateSelectedDecal({ opacity: Number(event.target.value) })}
+                    onChange={(event) => updateDecalOpacity(Number(event.target.value))}
                   />
                 </label>
                 <button className="danger-button" type="button" onClick={deleteSelectedDecal}>

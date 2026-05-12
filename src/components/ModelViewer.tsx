@@ -15,7 +15,7 @@ import {
   Vector3,
 } from 'three'
 import { DecalGeometry, GLTFLoader, OBJLoader, STLLoader } from 'three-stdlib'
-import type { DecalLayer, ModelFormat } from '../state/editorStore'
+import type { DecalLayer, DecalSettings, ModelFormat } from '../state/editorStore'
 
 export type SceneDecal = DecalLayer & {
   targetMesh: Mesh
@@ -28,6 +28,7 @@ type ModelViewerProps = {
   selectedAssetId: string | null
   selectedTextureUrl: string | null
   canApplyTexture: boolean
+  previewSettings: DecalSettings
   onCreateDecal: (decal: SceneDecal) => void
   onModelLoadStatus: (message: string) => void
 }
@@ -53,9 +54,12 @@ function useImageTexture(textureUrl: string | null) {
         }
 
         loadedTexture.colorSpace = SRGBColorSpace
-        loadedTexture.flipY = false
+        loadedTexture.flipY = true
         loadedTexture.wrapS = ClampToEdgeWrapping
         loadedTexture.wrapT = ClampToEdgeWrapping
+        loadedTexture.center.set(0.5, 0.5)
+        loadedTexture.offset.set(0, 0)
+        loadedTexture.repeat.set(1, 1)
         loadedTexture.needsUpdate = true
         setTexture(loadedTexture)
       },
@@ -224,7 +228,7 @@ function ProceduralPreviewModel() {
   )
 }
 
-function DecalMesh({ decal }: { decal: SceneDecal }) {
+function DecalMesh({ decal, preview = false }: { decal: SceneDecal; preview?: boolean }) {
   const texture = useImageTexture(decal.textureUrl)
   const geometry = useMemo(() => {
     return new DecalGeometry(
@@ -239,14 +243,14 @@ function DecalMesh({ decal }: { decal: SceneDecal }) {
     return new MeshBasicMaterial({
       map: texture,
       transparent: true,
-      opacity: decal.opacity,
+      opacity: preview ? Math.min(0.72, decal.opacity) : decal.opacity,
       depthTest: true,
       depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -4,
       side: DoubleSide,
     })
-  }, [decal.opacity, texture])
+  }, [decal.opacity, preview, texture])
 
   useEffect(() => {
     return () => {
@@ -255,10 +259,10 @@ function DecalMesh({ decal }: { decal: SceneDecal }) {
     }
   }, [geometry, material])
 
-  return <mesh geometry={geometry} material={material} userData={{ isDecal: true }} />
+  return <mesh geometry={geometry} material={material} renderOrder={preview ? 20 : 10} userData={{ isDecal: true }} />
 }
 
-function getDecalRotation(event: ThreeEvent<PointerEvent>) {
+function getDecalProjection(event: ThreeEvent<PointerEvent>, rotationOffset = 0) {
   const targetMesh = event.object as Mesh
   const point = event.point.clone()
   const localNormal = event.face?.normal.clone() ?? new Vector3(0, 0, 1)
@@ -267,6 +271,7 @@ function getDecalRotation(event: ThreeEvent<PointerEvent>) {
 
   projector.position.copy(point)
   projector.lookAt(point.clone().add(normal))
+  projector.rotateZ(rotationOffset)
 
   return {
     point,
@@ -283,39 +288,63 @@ export function ModelViewer({
   selectedAssetId,
   selectedTextureUrl,
   canApplyTexture,
+  previewSettings,
   onCreateDecal,
   onModelLoadStatus,
 }: ModelViewerProps) {
+  const [previewDecal, setPreviewDecal] = useState<SceneDecal | null>(null)
+
   useEffect(() => {
     onModelLoadStatus(modelUrl ? 'Custom model loaded. Select a sticker, then click the model to place a decal.' : 'Using preview model. Import GLB, GLTF, OBJ or STL anytime.')
   }, [modelUrl, onModelLoadStatus])
 
+  useEffect(() => {
+    setPreviewDecal(null)
+  }, [selectedAssetId, selectedTextureUrl])
+
+  const createDecalFromPointer = (event: ThreeEvent<PointerEvent>, id = 'preview-decal'): SceneDecal | null => {
+    if (!canApplyTexture || !selectedAssetId || !selectedTextureUrl || event.object.userData.isDecal) {
+      return null
+    }
+
+    const { point, normal, rotation, targetMesh } = getDecalProjection(event, previewSettings.rotation)
+
+    return {
+      id,
+      assetId: selectedAssetId,
+      textureUrl: selectedTextureUrl,
+      targetName: targetMesh.name || 'Model surface',
+      targetMesh,
+      position: point.toArray(),
+      normal: normal.toArray(),
+      rotation: rotation.toArray().slice(0, 3) as [number, number, number],
+      size: [previewSettings.size, previewSettings.size, previewSettings.size],
+      opacity: previewSettings.opacity,
+    }
+  }
+
   return (
     <>
       <group
+        onPointerMove={(event) => {
+          event.stopPropagation()
+          setPreviewDecal(createDecalFromPointer(event))
+        }}
+        onPointerLeave={() => setPreviewDecal(null)}
         onPointerDown={(event) => {
           event.stopPropagation()
-          if (!canApplyTexture || !selectedAssetId || !selectedTextureUrl || event.object.userData.isDecal) {
+          const nextDecal = createDecalFromPointer(event, crypto.randomUUID())
+
+          if (!nextDecal) {
             return
           }
 
-          const { point, normal, rotation, targetMesh } = getDecalRotation(event)
-          onCreateDecal({
-            id: crypto.randomUUID(),
-            assetId: selectedAssetId,
-            textureUrl: selectedTextureUrl,
-            targetName: targetMesh.name || 'Model surface',
-            targetMesh,
-            position: point.toArray(),
-            normal: normal.toArray(),
-            rotation: rotation.toArray().slice(0, 3) as [number, number, number],
-            size: [0.65, 0.65, 0.65],
-            opacity: 1,
-          })
+          onCreateDecal(nextDecal)
         }}
       >
         {modelUrl && modelFormat ? <LoadedModel modelUrl={modelUrl} modelFormat={modelFormat} /> : <ProceduralPreviewModel />}
       </group>
+      {previewDecal && <DecalMesh decal={previewDecal} preview />}
       {decals.map((decal) => (
         <DecalMesh decal={decal} key={decal.id} />
       ))}

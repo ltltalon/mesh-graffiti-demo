@@ -449,6 +449,48 @@ button {
   transition: transform 180ms ease, width 180ms ease, padding 180ms ease;
 }
 
+.decal-popover {
+  position: absolute;
+  z-index: 18;
+  left: 18px;
+  bottom: 76px;
+  display: grid;
+  width: min(312px, calc(100% - 36px));
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid rgba(0, 208, 132, 0.28);
+  border-radius: 10px;
+  color: #e8f5ec;
+  background: rgba(4, 9, 7, 0.9);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(18px);
+}
+
+.decal-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.decal-popover-header span,
+.decal-popover-header small {
+  display: block;
+}
+
+.decal-popover-header span {
+  color: #f4fff8;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.decal-popover-header small {
+  margin-top: 2px;
+  color: #83a392;
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .lighting-panel.open {
   transform: translateX(-16px);
 }
@@ -598,6 +640,12 @@ button {
   color: #ffd8d8;
   background: rgba(225, 71, 71, 0.12);
   cursor: pointer;
+}
+
+.danger-button.compact {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .empty-control-copy {

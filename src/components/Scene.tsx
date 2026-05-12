@@ -4,7 +4,7 @@ import { useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, Grid, OrbitControls } from '@react-three/drei'
 import { GLTFExporter } from 'three-stdlib'
 import { ModelViewer, type SceneDecal } from './ModelViewer'
-import type { ModelFormat } from '../state/editorStore'
+import type { DecalSettings, ModelFormat } from '../state/editorStore'
 
 type SceneProps = {
   modelUrl: string | null
@@ -13,6 +13,7 @@ type SceneProps = {
   selectedAssetId: string | null
   selectedTextureUrl: string | null
   canApplyTexture: boolean
+  previewSettings: DecalSettings
   onCreateDecal: (decal: SceneDecal) => void
   onModelLoadStatus: (message: string) => void
   exportRequestId: number
@@ -66,6 +67,7 @@ export function Scene({
   selectedAssetId,
   selectedTextureUrl,
   canApplyTexture,
+  previewSettings,
   onCreateDecal,
   onModelLoadStatus,
   exportRequestId,
@@ -84,6 +86,7 @@ export function Scene({
         selectedAssetId={selectedAssetId}
         selectedTextureUrl={selectedTextureUrl}
         canApplyTexture={canApplyTexture}
+        previewSettings={previewSettings}
         onCreateDecal={onCreateDecal}
         onModelLoadStatus={onModelLoadStatus}
       />
