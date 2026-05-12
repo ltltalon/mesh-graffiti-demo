@@ -50,9 +50,9 @@ function App() {
   const [isLightingOpen, setIsLightingOpen] = useState(true)
   const [assets, setAssets] = useState<UploadedTextureAsset[]>(presetTextureAssets)
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
-  const [modelUrl, setModelUrl] = useState<string | null>(null)
-  const [modelFormat, setModelFormat] = useState<ModelFormat | null>(null)
-  const [modelName, setModelName] = useState('Procedural preview model')
+  const [modelUrl, setModelUrl] = useState<string | null>('/models/Suitcase.glb')
+  const [modelFormat, setModelFormat] = useState<ModelFormat | null>('gltf')
+  const [modelName, setModelName] = useState('Suitcase.glb')
   const [editorMessage, setEditorMessage] = useState('Select a sticker, then click the model to place a decal.')
   const [decals, setDecals] = useState<SceneDecal[]>([])
   const [selectedDecalId, setSelectedDecalId] = useState<string | null>(null)
@@ -79,7 +79,7 @@ function App() {
     }
 
     setModelUrl((currentUrl) => {
-      if (currentUrl) {
+      if (currentUrl?.startsWith('blob:')) {
         URL.revokeObjectURL(currentUrl)
       }
 
@@ -145,7 +145,7 @@ function App() {
           URL.revokeObjectURL(asset.url)
         }
       })
-      if (modelUrlRef.current) {
+      if (modelUrlRef.current?.startsWith('blob:')) {
         URL.revokeObjectURL(modelUrlRef.current)
       }
     }
