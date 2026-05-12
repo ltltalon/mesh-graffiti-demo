@@ -1,23 +1,75 @@
 import { Canvas } from '@react-three/fiber'
+import { useEffect } from 'react'
+import { useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, Grid, OrbitControls } from '@react-three/drei'
-import { ModelViewer } from './ModelViewer'
+import { GLTFExporter } from 'three-stdlib'
+import { ModelViewer, type SceneDecal } from './ModelViewer'
+import type { ModelFormat } from '../state/editorStore'
 
 type SceneProps = {
   modelUrl: string | null
-  modelFormat: 'gltf' | 'stl' | null
-  appliedTextureUrl: string | null
+  modelFormat: ModelFormat | null
+  decals: SceneDecal[]
+  selectedAssetId: string | null
+  selectedTextureUrl: string | null
   canApplyTexture: boolean
-  onApplyTexture: () => void
+  onCreateDecal: (decal: SceneDecal) => void
   onModelLoadStatus: (message: string) => void
+  exportRequestId: number
+  onExportComplete: (message: string) => void
+}
+
+function SceneExporter({
+  exportRequestId,
+  onExportComplete,
+}: {
+  exportRequestId: number
+  onExportComplete: (message: string) => void
+}) {
+  const { scene } = useThree()
+
+  useEffect(() => {
+    if (exportRequestId === 0) {
+      return
+    }
+
+    const exporter = new GLTFExporter()
+    exporter.parse(
+      scene,
+      (result) => {
+        const blob = result instanceof ArrayBuffer
+          ? new Blob([result], { type: 'model/gltf-binary' })
+          : new Blob([JSON.stringify(result)], { type: 'model/gltf+json' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+
+        link.href = url
+        link.download = 'mesh-graffiti-decal-scene.glb'
+        link.click()
+        URL.revokeObjectURL(url)
+        onExportComplete('GLB exported with model and decal meshes.')
+      },
+      (error) => {
+        onExportComplete(`Export failed: ${error instanceof Error ? error.message : 'unknown error'}`)
+      },
+      { binary: true },
+    )
+  }, [exportRequestId, onExportComplete, scene])
+
+  return null
 }
 
 export function Scene({
   modelUrl,
   modelFormat,
-  appliedTextureUrl,
+  decals,
+  selectedAssetId,
+  selectedTextureUrl,
   canApplyTexture,
-  onApplyTexture,
+  onCreateDecal,
   onModelLoadStatus,
+  exportRequestId,
+  onExportComplete,
 }: SceneProps) {
   return (
     <Canvas className="scene-canvas" camera={{ position: [4.2, 3.1, 5.8], fov: 38 }} shadows>
@@ -28,9 +80,11 @@ export function Scene({
       <ModelViewer
         modelUrl={modelUrl}
         modelFormat={modelFormat}
-        textureUrl={appliedTextureUrl}
+        decals={decals}
+        selectedAssetId={selectedAssetId}
+        selectedTextureUrl={selectedTextureUrl}
         canApplyTexture={canApplyTexture}
-        onApplyTexture={onApplyTexture}
+        onCreateDecal={onCreateDecal}
         onModelLoadStatus={onModelLoadStatus}
       />
       <Grid
@@ -53,6 +107,7 @@ export function Scene({
         target={[0, -0.35, 0]}
         zoomSpeed={0.85}
       />
+      <SceneExporter exportRequestId={exportRequestId} onExportComplete={onExportComplete} />
     </Canvas>
   )
 }

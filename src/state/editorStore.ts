@@ -1,4 +1,17 @@
 export type EditorMode = 'move' | 'scale' | 'rotate'
+export type ModelFormat = 'gltf' | 'stl' | 'obj'
+
+export type DecalLayer = {
+  id: string
+  assetId: string
+  textureUrl: string
+  targetName: string
+  position: [number, number, number]
+  normal: [number, number, number]
+  rotation: [number, number, number]
+  size: [number, number, number]
+  opacity: number
+}
 
 export type EditorState = {
   mode: EditorMode

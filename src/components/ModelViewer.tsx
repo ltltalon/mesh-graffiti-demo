@@ -1,22 +1,34 @@
+import type { ThreeEvent } from '@react-three/fiber'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ClampToEdgeWrapping,
+  DoubleSide,
+  Euler,
   Group,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
   SRGBColorSpace,
   Texture,
   TextureLoader,
+  Vector3,
 } from 'three'
-import { GLTFLoader, STLLoader } from 'three-stdlib'
+import { DecalGeometry, GLTFLoader, OBJLoader, STLLoader } from 'three-stdlib'
+import type { DecalLayer, ModelFormat } from '../state/editorStore'
+
+export type SceneDecal = DecalLayer & {
+  targetMesh: Mesh
+}
 
 type ModelViewerProps = {
   modelUrl: string | null
-  modelFormat: 'gltf' | 'stl' | null
-  textureUrl: string | null
+  modelFormat: ModelFormat | null
+  decals: SceneDecal[]
+  selectedAssetId: string | null
+  selectedTextureUrl: string | null
   canApplyTexture: boolean
-  onApplyTexture: () => void
+  onCreateDecal: (decal: SceneDecal) => void
   onModelLoadStatus: (message: string) => void
 }
 
@@ -67,24 +79,25 @@ function useImageTexture(textureUrl: string | null) {
   return texture
 }
 
-function createModelMaterial(texture: Texture | null, color = '#92a0b6') {
+function createModelMaterial(color = '#92a0b6') {
   return new MeshStandardMaterial({
     color,
-    map: texture,
     roughness: 0.72,
     metalness: 0.02,
   })
 }
 
-function LoadedModel({
-  modelUrl,
-  modelFormat,
-  texture,
-}: {
-  modelUrl: string
-  modelFormat: 'gltf' | 'stl'
-  texture: Texture | null
-}) {
+function applyBaseMeshSetup(object: Object3D) {
+  object.traverse((child: Object3D) => {
+    if (child instanceof Mesh) {
+      child.castShadow = true
+      child.receiveShadow = true
+      child.material = createModelMaterial()
+    }
+  })
+}
+
+function LoadedModel({ modelUrl, modelFormat }: { modelUrl: string; modelFormat: ModelFormat }) {
   const [model, setModel] = useState<Group | null>(null)
 
   useEffect(() => {
@@ -104,11 +117,32 @@ function LoadedModel({
           geometry.computeVertexNormals()
 
           const loadedGroup = new Group()
-          const mesh = new Mesh(geometry, createModelMaterial(texture))
+          const mesh = new Mesh(geometry, createModelMaterial())
+          mesh.name = 'Imported STL mesh'
           mesh.castShadow = true
           mesh.receiveShadow = true
           loadedGroup.add(mesh)
           setModel(loadedGroup)
+        },
+        undefined,
+        () => {
+          if (isMounted) {
+            setModel(null)
+          }
+        },
+      )
+    } else if (modelFormat === 'obj') {
+      const loader = new OBJLoader()
+
+      loader.load(
+        modelUrl,
+        (object) => {
+          if (!isMounted) {
+            return
+          }
+
+          applyBaseMeshSetup(object)
+          setModel(object)
         },
         undefined,
         () => {
@@ -128,12 +162,7 @@ function LoadedModel({
           }
 
           const loadedScene = gltf.scene.clone(true)
-          loadedScene.traverse((child: Object3D) => {
-            if (child instanceof Mesh) {
-              child.castShadow = true
-              child.receiveShadow = true
-            }
-          })
+          applyBaseMeshSetup(loadedScene)
           setModel(loadedScene)
         },
         undefined,
@@ -149,15 +178,7 @@ function LoadedModel({
       isMounted = false
       setModel(null)
     }
-  }, [modelFormat, modelUrl, texture])
-
-  useEffect(() => {
-    model?.traverse((child: Object3D) => {
-      if (child instanceof Mesh) {
-        child.material = createModelMaterial(texture)
-      }
-    })
-  }, [model, texture])
+  }, [modelFormat, modelUrl])
 
   if (!model) {
     return null
@@ -166,79 +187,138 @@ function LoadedModel({
   return <primitive object={model} position={[0, -1.15, 0]} scale={1.5} />
 }
 
-function ProceduralPreviewModel({ texture }: { texture: Texture | null }) {
-  const baseMaterial = useMemo(() => createModelMaterial(texture), [texture])
-  const darkerMaterial = useMemo(() => createModelMaterial(texture, '#8795aa'), [texture])
+function ProceduralPreviewModel() {
+  const baseMaterial = useMemo(() => createModelMaterial(), [])
+  const darkerMaterial = useMemo(() => createModelMaterial('#8795aa'), [])
 
   return (
     <group position={[0, -0.48, 0]} rotation={[0.02, -0.32, 0]}>
-      <mesh castShadow receiveShadow scale={[1.2, 0.95, 1.02]} material={baseMaterial}>
+      <mesh castShadow receiveShadow scale={[1.2, 0.95, 1.02]} material={baseMaterial} name="Preview head">
         <sphereGeometry args={[1, 64, 48]} />
       </mesh>
 
-      <mesh castShadow receiveShadow position={[0, -0.26, 0.95]} scale={[0.52, 0.34, 0.78]} material={baseMaterial}>
+      <mesh castShadow receiveShadow position={[0, -0.26, 0.95]} scale={[0.52, 0.34, 0.78]} material={baseMaterial} name="Preview snout">
         <sphereGeometry args={[1, 48, 32]} />
       </mesh>
 
-      <mesh castShadow receiveShadow position={[0, -0.48, 1.55]} scale={[0.34, 0.22, 0.2]} material={darkerMaterial}>
+      <mesh castShadow receiveShadow position={[0, -0.48, 1.55]} scale={[0.34, 0.22, 0.2]} material={darkerMaterial} name="Preview nose">
         <sphereGeometry args={[1, 32, 20]} />
       </mesh>
 
-      <mesh castShadow receiveShadow position={[-0.46, 0.08, 0.77]} rotation={[0.04, -0.16, 0.05]} scale={[0.2, 0.26, 0.1]} material={darkerMaterial}>
+      <mesh castShadow receiveShadow position={[-0.46, 0.08, 0.77]} rotation={[0.04, -0.16, 0.05]} scale={[0.2, 0.26, 0.1]} material={darkerMaterial} name="Preview left eye">
         <sphereGeometry args={[1, 32, 20]} />
       </mesh>
 
-      <mesh castShadow receiveShadow position={[0.46, 0.08, 0.77]} rotation={[0.04, 0.16, -0.05]} scale={[0.2, 0.26, 0.1]} material={darkerMaterial}>
+      <mesh castShadow receiveShadow position={[0.46, 0.08, 0.77]} rotation={[0.04, 0.16, -0.05]} scale={[0.2, 0.26, 0.1]} material={darkerMaterial} name="Preview right eye">
         <sphereGeometry args={[1, 32, 20]} />
       </mesh>
 
-      <mesh castShadow receiveShadow position={[-0.94, -0.08, 0.16]} rotation={[0.1, 0.18, -0.48]} scale={[0.2, 0.62, 0.28]} material={baseMaterial}>
+      <mesh castShadow receiveShadow position={[-0.94, -0.08, 0.16]} rotation={[0.1, 0.18, -0.48]} scale={[0.2, 0.62, 0.28]} material={baseMaterial} name="Preview left ear">
         <sphereGeometry args={[1, 32, 20]} />
       </mesh>
 
-      <mesh castShadow receiveShadow position={[0.94, -0.08, 0.16]} rotation={[0.1, -0.18, 0.48]} scale={[0.2, 0.62, 0.28]} material={baseMaterial}>
+      <mesh castShadow receiveShadow position={[0.94, -0.08, 0.16]} rotation={[0.1, -0.18, 0.48]} scale={[0.2, 0.62, 0.28]} material={baseMaterial} name="Preview right ear">
         <sphereGeometry args={[1, 32, 20]} />
-      </mesh>
-
-      <mesh castShadow receiveShadow position={[-0.56, 0.72, 0.1]} rotation={[0.2, 0.25, 0.58]} scale={[0.16, 0.36, 0.22]} material={baseMaterial}>
-        <coneGeometry args={[1, 1, 32]} />
-      </mesh>
-
-      <mesh castShadow receiveShadow position={[0.56, 0.72, 0.1]} rotation={[0.2, -0.25, -0.58]} scale={[0.16, 0.36, 0.22]} material={baseMaterial}>
-        <coneGeometry args={[1, 1, 32]} />
       </mesh>
     </group>
   )
 }
 
+function DecalMesh({ decal }: { decal: SceneDecal }) {
+  const texture = useImageTexture(decal.textureUrl)
+  const geometry = useMemo(() => {
+    return new DecalGeometry(
+      decal.targetMesh,
+      new Vector3(...decal.position),
+      new Euler(...decal.rotation),
+      new Vector3(...decal.size),
+    )
+  }, [decal])
+
+  const material = useMemo(() => {
+    return new MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      opacity: decal.opacity,
+      depthTest: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      side: DoubleSide,
+    })
+  }, [decal.opacity, texture])
+
+  useEffect(() => {
+    return () => {
+      geometry.dispose()
+      material.dispose()
+    }
+  }, [geometry, material])
+
+  return <mesh geometry={geometry} material={material} userData={{ isDecal: true }} />
+}
+
+function getDecalRotation(event: ThreeEvent<PointerEvent>) {
+  const targetMesh = event.object as Mesh
+  const point = event.point.clone()
+  const localNormal = event.face?.normal.clone() ?? new Vector3(0, 0, 1)
+  const normal = localNormal.transformDirection(targetMesh.matrixWorld).normalize()
+  const projector = new Object3D()
+
+  projector.position.copy(point)
+  projector.lookAt(point.clone().add(normal))
+
+  return {
+    point,
+    normal,
+    rotation: projector.rotation.clone(),
+    targetMesh,
+  }
+}
+
 export function ModelViewer({
   modelUrl,
   modelFormat,
-  textureUrl,
+  decals,
+  selectedAssetId,
+  selectedTextureUrl,
   canApplyTexture,
-  onApplyTexture,
+  onCreateDecal,
   onModelLoadStatus,
 }: ModelViewerProps) {
-  const texture = useImageTexture(textureUrl)
-
   useEffect(() => {
-    onModelLoadStatus(modelUrl ? 'Custom model loaded. Click the model to apply selected texture.' : 'Using preview model. Import GLB, GLTF or STL anytime.')
+    onModelLoadStatus(modelUrl ? 'Custom model loaded. Select a sticker, then click the model to place a decal.' : 'Using preview model. Import GLB, GLTF, OBJ or STL anytime.')
   }, [modelUrl, onModelLoadStatus])
 
   return (
-    <group
-      onPointerDown={(event) => {
-        event.stopPropagation()
-        if (canApplyTexture) {
-          onApplyTexture()
-        }
-      }}
-    >
-      {modelUrl && modelFormat ? (
-        <LoadedModel modelUrl={modelUrl} modelFormat={modelFormat} texture={texture} />
-      ) : (
-        <ProceduralPreviewModel texture={texture} />
-      )}
-    </group>
+    <>
+      <group
+        onPointerDown={(event) => {
+          event.stopPropagation()
+          if (!canApplyTexture || !selectedAssetId || !selectedTextureUrl || event.object.userData.isDecal) {
+            return
+          }
+
+          const { point, normal, rotation, targetMesh } = getDecalRotation(event)
+          onCreateDecal({
+            id: crypto.randomUUID(),
+            assetId: selectedAssetId,
+            textureUrl: selectedTextureUrl,
+            targetName: targetMesh.name || 'Model surface',
+            targetMesh,
+            position: point.toArray(),
+            normal: normal.toArray(),
+            rotation: rotation.toArray().slice(0, 3) as [number, number, number],
+            size: [0.65, 0.65, 0.65],
+            opacity: 1,
+          })
+        }}
+      >
+        {modelUrl && modelFormat ? <LoadedModel modelUrl={modelUrl} modelFormat={modelFormat} /> : <ProceduralPreviewModel />}
+      </group>
+      {decals.map((decal) => (
+        <DecalMesh decal={decal} key={decal.id} />
+      ))}
+    </>
   )
 }

@@ -49,7 +49,7 @@ export function AssetPanel({ assets, selectedAssetId, onAssetUpload, onSelectAss
           >
             <img className="asset-thumb" src={asset.url} alt="" />
             <strong>{asset.name}</strong>
-            <small>{formatFileSize(asset.size)}</small>
+            <small>{asset.preset ? 'Preset sticker' : formatFileSize(asset.size ?? 0)}</small>
           </button>
         ))}
       </div>

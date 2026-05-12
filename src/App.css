@@ -587,6 +587,25 @@ button {
   line-height: 1.35;
 }
 
+.decal-controls {
+  border-color: rgba(0, 208, 132, 0.18);
+}
+
+.danger-button {
+  min-height: 36px;
+  border: 1px solid rgba(225, 71, 71, 0.42);
+  border-radius: 8px;
+  color: #ffd8d8;
+  background: rgba(225, 71, 71, 0.12);
+  cursor: pointer;
+}
+
+.empty-control-copy {
+  color: #83a392;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .toolbar-group {
   gap: 8px;
 }

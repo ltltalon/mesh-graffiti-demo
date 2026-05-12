@@ -22,12 +22,14 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import { AssetPanel } from './components/AssetPanel'
+import type { SceneDecal } from './components/ModelViewer'
 import { Scene } from './components/Scene'
 import { Toolbar } from './components/Toolbar'
-import { createTextureAsset, type UploadedTextureAsset } from './lib/textureUtils'
+import { createTextureAsset, presetTextureAssets, type UploadedTextureAsset } from './lib/textureUtils'
+import type { ModelFormat } from './state/editorStore'
 
 const workflowSteps = [
-  { label: 'Import Model', detail: 'Load GLB / GLTF geometry', icon: Box },
+  { label: 'Import Model', detail: 'Load GLB / OBJ / STL geometry', icon: Box },
   { label: 'Upload Image', detail: 'Add local graphic assets', icon: ImagePlus },
   { label: 'Place on Surface', detail: 'Click the mesh to apply', icon: Move3D },
   { label: 'Adjust', detail: 'Tune offset, scale, rotation', icon: Scale3D },
@@ -46,17 +48,20 @@ const sceneModes = ['Solid', 'Grid', 'Preview']
 
 function App() {
   const [isLightingOpen, setIsLightingOpen] = useState(true)
-  const [assets, setAssets] = useState<UploadedTextureAsset[]>([])
+  const [assets, setAssets] = useState<UploadedTextureAsset[]>(presetTextureAssets)
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
-  const [appliedTextureUrl, setAppliedTextureUrl] = useState<string | null>(null)
   const [modelUrl, setModelUrl] = useState<string | null>(null)
-  const [modelFormat, setModelFormat] = useState<'gltf' | 'stl' | null>(null)
+  const [modelFormat, setModelFormat] = useState<ModelFormat | null>(null)
   const [modelName, setModelName] = useState('Procedural preview model')
-  const [editorMessage, setEditorMessage] = useState('Upload an image, select it, then click the model to apply it.')
+  const [editorMessage, setEditorMessage] = useState('Select a sticker, then click the model to place a decal.')
+  const [decals, setDecals] = useState<SceneDecal[]>([])
+  const [selectedDecalId, setSelectedDecalId] = useState<string | null>(null)
+  const [exportRequestId, setExportRequestId] = useState(0)
   const assetsRef = useRef<UploadedTextureAsset[]>([])
   const modelUrlRef = useRef<string | null>(null)
 
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null
+  const selectedDecal = decals.find((decal) => decal.id === selectedDecalId) ?? null
 
   useEffect(() => {
     assetsRef.current = assets
@@ -80,9 +85,12 @@ function App() {
 
       return URL.createObjectURL(file)
     })
-    setModelFormat(file.name.toLowerCase().endsWith('.stl') ? 'stl' : 'gltf')
+    const modelExtension = file.name.split('.').pop()?.toLowerCase()
+    setModelFormat(modelExtension === 'stl' ? 'stl' : modelExtension === 'obj' ? 'obj' : 'gltf')
     setModelName(file.name)
-    setEditorMessage(`${file.name} loaded. Select an image and click the model surface.`)
+    setDecals([])
+    setSelectedDecalId(null)
+    setEditorMessage(`${file.name} loaded. Select a sticker and click the model surface.`)
   }, [])
 
   const handleAssetUpload = useCallback((files: FileList | null) => {
@@ -97,26 +105,46 @@ function App() {
 
     setAssets((currentAssets) => [...nextAssets, ...currentAssets])
     setSelectedAssetId(nextAssets[0].id)
-    setEditorMessage(`${nextAssets[0].name} selected. Click the model to apply it.`)
+    setEditorMessage(`${nextAssets[0].name} selected. Click the model to place it.`)
   }, [])
-
-  const handleApplyTexture = useCallback(() => {
-    if (!selectedAsset) {
-      setEditorMessage('Select an uploaded image before applying a texture.')
-      return
-    }
-
-    setAppliedTextureUrl(selectedAsset.url)
-    setEditorMessage(`${selectedAsset.name} applied to ${modelName}.`)
-  }, [modelName, selectedAsset])
 
   const handleModelLoadStatus = useCallback((message: string) => {
     setEditorMessage(message)
   }, [])
 
+  const handleCreateDecal = useCallback((decal: SceneDecal) => {
+    setDecals((currentDecals) => [...currentDecals, decal])
+    setSelectedDecalId(decal.id)
+    setEditorMessage(`Decal placed on ${decal.targetName}. Adjust scale, rotation, opacity or delete it.`)
+  }, [])
+
+  const updateSelectedDecal = useCallback((updates: Partial<Pick<SceneDecal, 'size' | 'rotation' | 'opacity'>>) => {
+    if (!selectedDecalId) {
+      return
+    }
+
+    setDecals((currentDecals) =>
+      currentDecals.map((decal) => (decal.id === selectedDecalId ? { ...decal, ...updates } : decal)),
+    )
+  }, [selectedDecalId])
+
+  const deleteSelectedDecal = useCallback(() => {
+    if (!selectedDecalId) {
+      return
+    }
+
+    setDecals((currentDecals) => currentDecals.filter((decal) => decal.id !== selectedDecalId))
+    setSelectedDecalId(null)
+    setEditorMessage('Selected decal deleted.')
+  }, [selectedDecalId])
+
   useEffect(() => {
     return () => {
-      assetsRef.current.forEach((asset) => URL.revokeObjectURL(asset.url))
+      assetsRef.current.forEach((asset) => {
+        if (!asset.preset) {
+          URL.revokeObjectURL(asset.url)
+        }
+      })
       if (modelUrlRef.current) {
         URL.revokeObjectURL(modelUrlRef.current)
       }
@@ -140,7 +168,7 @@ function App() {
             <Eye size={16} />
             Preview
           </button>
-          <button className="primary-button" type="button">
+          <button className="primary-button" type="button" onClick={() => setExportRequestId((current) => current + 1)}>
             <Download size={16} />
             Export GLB
           </button>
@@ -183,13 +211,13 @@ function App() {
             <label className="secondary-button file-button">
               <input
                 type="file"
-                accept=".glb,.gltf,.stl,model/gltf-binary,model/gltf+json,model/stl"
+                accept=".glb,.gltf,.obj,.stl,model/gltf-binary,model/gltf+json,model/stl"
                 onChange={(event) => handleModelUpload(event.target.files)}
               />
               <FileUp size={16} />
               Choose Model
             </label>
-            <span className="supported-formats">Supports GLB, GLTF, STL</span>
+            <span className="supported-formats">Supports GLB, GLTF, OBJ, STL</span>
           </div>
 
           <AssetPanel
@@ -199,7 +227,7 @@ function App() {
             onSelectAsset={(assetId) => {
               setSelectedAssetId(assetId)
               const asset = assets.find((item) => item.id === assetId)
-              setEditorMessage(asset ? `${asset.name} selected. Click the model to apply it.` : editorMessage)
+              setEditorMessage(asset ? `${asset.name} selected. Click the model to place it.` : editorMessage)
             }}
           />
         </aside>
@@ -225,10 +253,14 @@ function App() {
           <Scene
             modelUrl={modelUrl}
             modelFormat={modelFormat}
-            appliedTextureUrl={appliedTextureUrl}
+            decals={decals}
+            selectedAssetId={selectedAssetId}
+            selectedTextureUrl={selectedAsset?.url ?? null}
             canApplyTexture={Boolean(selectedAsset)}
-            onApplyTexture={handleApplyTexture}
+            onCreateDecal={handleCreateDecal}
             onModelLoadStatus={handleModelLoadStatus}
+            exportRequestId={exportRequestId}
+            onExportComplete={setEditorMessage}
           />
           <Toolbar />
           <aside
@@ -355,6 +387,62 @@ function App() {
               </div>
             </div>
           </section>
+
+          <section className="editor-section decal-controls">
+            <div className="section-title">
+              <Move3D size={16} />
+              Decal Controls
+            </div>
+            {selectedDecal ? (
+              <>
+                <label>
+                  Scale
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="2.4"
+                    step="0.05"
+                    value={selectedDecal.size[0]}
+                    onChange={(event) => {
+                      const nextSize = Number(event.target.value)
+                      updateSelectedDecal({ size: [nextSize, nextSize, nextSize] })
+                    }}
+                  />
+                </label>
+                <label>
+                  Rotate
+                  <input
+                    type="range"
+                    min="-3.14"
+                    max="3.14"
+                    step="0.01"
+                    value={selectedDecal.rotation[2]}
+                    onChange={(event) => {
+                      updateSelectedDecal({
+                        rotation: [selectedDecal.rotation[0], selectedDecal.rotation[1], Number(event.target.value)],
+                      })
+                    }}
+                  />
+                </label>
+                <label>
+                  Opacity
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1"
+                    step="0.05"
+                    value={selectedDecal.opacity}
+                    onChange={(event) => updateSelectedDecal({ opacity: Number(event.target.value) })}
+                  />
+                </label>
+                <button className="danger-button" type="button" onClick={deleteSelectedDecal}>
+                  Delete Decal
+                </button>
+              </>
+            ) : (
+              <p className="empty-control-copy">Place a sticker on the model to edit scale, rotation and opacity.</p>
+            )}
+          </section>
         </aside>
       </section>
 
@@ -365,7 +453,7 @@ function App() {
         </span>
         <span>
           <RotateCw size={14} />
-          Transform mode: texture
+          Decals: {decals.length}
         </span>
         <span>
           <CheckCircle2 size={14} />
