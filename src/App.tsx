@@ -5,6 +5,7 @@ import {
   Download,
   Eye,
   FileUp,
+  FileJson,
   ImagePlus,
   Layers,
   Lightbulb,
@@ -31,7 +32,7 @@ import {
   readImageAspectRatio,
   type UploadedTextureAsset,
 } from './lib/textureUtils'
-import type { DecalSettings, ModelFormat } from './state/editorStore'
+import type { DecalSettings, MaterialRegion, MaterialSettings, ModelFormat } from './state/editorStore'
 
 const workflowSteps = [
   { label: 'Import Model', detail: 'Load GLB / OBJ / STL geometry', icon: Box },
@@ -41,21 +42,49 @@ const workflowSteps = [
   { label: 'Export GLB', detail: 'Save textured result', icon: Download },
 ]
 
-const materials = ['Matte paint', 'Soft plastic', 'Brushed metal', 'Ceramic']
-const textures = ['Carbon fiber', 'Fine fabric', 'Micro dots', 'Rough stone']
+const modelPresets: Array<{ name: string; url: string; format: ModelFormat }> = [
+  { name: 'Suitcase', url: '/models/Suitcase.glb', format: 'gltf' },
+  { name: 'Mug', url: '/models/Mug.glb', format: 'gltf' },
+  { name: 'Refrigirator', url: '/models/Refrigirator.glb', format: 'gltf' },
+]
+
+const materialPresets: Array<{ name: string; className: string; settings: MaterialSettings }> = [
+  { name: 'Matte paint', className: 'material-1', settings: { color: '#2a3a33', roughness: 0.86, metalness: 0.02, opacity: 1, transparent: false } },
+  { name: 'Soft plastic', className: 'material-2', settings: { color: '#38d7b2', roughness: 0.42, metalness: 0.04, opacity: 1, transparent: false } },
+  { name: 'Brushed metal', className: 'material-3', settings: { color: '#88958f', roughness: 0.28, metalness: 0.78, opacity: 1, transparent: false } },
+  { name: 'Ceramic', className: 'material-4', settings: { color: '#edf8f1', roughness: 0.18, metalness: 0.01, opacity: 1, transparent: false } },
+]
+const textureSlots = [
+  { name: 'Base color map', status: 'Ready for image upload' },
+  { name: 'Normal map', status: 'Reserved' },
+  { name: 'Roughness map', status: 'Reserved' },
+  { name: 'Metalness map', status: 'Reserved' },
+]
 const palette = ['#00d084', '#b7ff4a', '#2cf3c6', '#ffffff', '#7f8c8d', '#111514']
 const lightingPresets = [
-  { name: 'Studio', detail: 'Clean top key', icon: Sun, active: true },
+  { name: 'Studio', detail: 'Clean top key', icon: Sun },
   { name: 'Cool Rim', detail: 'Blue edge light', icon: Lightbulb },
   { name: 'Soft Night', detail: 'Low contrast', icon: Moon },
 ]
 const sceneModes = ['Solid', 'Grid', 'Preview']
+const editorTabs = ['Materials', 'Textures', 'Colors']
 const DECAL_SIZE_MIN = 0.08
 const DECAL_SIZE_MAX = 0.8
 const DECAL_SIZE_DEFAULT = DECAL_SIZE_MIN + (DECAL_SIZE_MAX - DECAL_SIZE_MIN) / 3
+const clampDecalSize = (size: number) => Math.min(DECAL_SIZE_MAX, Math.max(DECAL_SIZE_MIN, size))
+type HistorySnapshot = {
+  decals: SceneDecal[]
+  materialSettingsByRegion: Record<string, MaterialSettings>
+}
 
 function App() {
   const [isLightingOpen, setIsLightingOpen] = useState(true)
+  const [activeCommand, setActiveCommand] = useState('perspective')
+  const [cameraView, setCameraView] = useState('perspective')
+  const [activeSceneMode, setActiveSceneMode] = useState('Grid')
+  const [activeLightingPreset, setActiveLightingPreset] = useState('Studio')
+  const [activeEditorTab, setActiveEditorTab] = useState('Materials')
+  const [activeTextureSlot, setActiveTextureSlot] = useState(textureSlots[0].name)
   const [assets, setAssets] = useState<UploadedTextureAsset[]>(presetTextureAssets)
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
   const [modelUrl, setModelUrl] = useState<string | null>('/models/Suitcase.glb')
@@ -64,6 +93,10 @@ function App() {
   const [editorMessage, setEditorMessage] = useState('Select a sticker, then click the model to place a decal.')
   const [decals, setDecals] = useState<SceneDecal[]>([])
   const [exportRequestId, setExportRequestId] = useState(0)
+  const [materialRegions, setMaterialRegions] = useState<MaterialRegion[]>([])
+  const [selectedMaterialRegionId, setSelectedMaterialRegionId] = useState<string | null>(null)
+  const [hoveredMaterialRegionId, setHoveredMaterialRegionId] = useState<string | null>(null)
+  const [materialSettingsByRegion, setMaterialSettingsByRegion] = useState<Record<string, MaterialSettings>>({})
   const [previewSettings, setPreviewSettings] = useState<DecalSettings>({
     size: DECAL_SIZE_DEFAULT,
     aspectRatio: 1,
@@ -72,8 +105,13 @@ function App() {
   })
   const assetsRef = useRef<UploadedTextureAsset[]>([])
   const modelUrlRef = useRef<string | null>(null)
+  const historyRef = useRef<HistorySnapshot[]>([])
 
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null
+  const selectedMaterialRegion = materialRegions.find((region) => region.id === selectedMaterialRegionId) ?? null
+  const selectedMaterialSettings = selectedMaterialRegion
+    ? materialSettingsByRegion[selectedMaterialRegion.id] ?? selectedMaterialRegion.settings
+    : null
 
   useEffect(() => {
     assetsRef.current = assets
@@ -101,7 +139,31 @@ function App() {
     setModelFormat(modelExtension === 'stl' ? 'stl' : modelExtension === 'obj' ? 'obj' : 'gltf')
     setModelName(file.name)
     setDecals([])
+    historyRef.current = []
+    setMaterialRegions([])
+    setSelectedMaterialRegionId(null)
+    setHoveredMaterialRegionId(null)
+    setMaterialSettingsByRegion({})
     setEditorMessage(`${file.name} loaded. Select a sticker and click the model surface.`)
+  }, [])
+
+  const handlePresetModelSelect = useCallback((preset: { name: string; url: string; format: ModelFormat }) => {
+    setModelUrl((currentUrl) => {
+      if (currentUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(currentUrl)
+      }
+
+      return preset.url
+    })
+    setModelFormat(preset.format)
+    setModelName(`${preset.name}.glb`)
+    setDecals([])
+    historyRef.current = []
+    setMaterialRegions([])
+    setSelectedMaterialRegionId(null)
+    setHoveredMaterialRegionId(null)
+    setMaterialSettingsByRegion({})
+    setEditorMessage(`${preset.name} preset loaded. Select a sticker and click the model surface.`)
   }, [])
 
   const handleAssetUpload = useCallback(async (files: FileList | null) => {
@@ -134,9 +196,10 @@ function App() {
   }, [])
 
   const handleCreateDecal = useCallback((decal: SceneDecal) => {
+    historyRef.current.push({ decals, materialSettingsByRegion })
     setDecals((currentDecals) => [...currentDecals, decal])
     setEditorMessage(`Decal placed on ${decal.targetName}. The controls now affect the next decal preview.`)
-  }, [])
+  }, [decals, materialSettingsByRegion])
 
   const updateDecalScale = useCallback((nextSize: number) => {
     setPreviewSettings((currentSettings) => ({ ...currentSettings, size: nextSize }))
@@ -148,6 +211,97 @@ function App() {
 
   const updateDecalOpacity = useCallback((nextOpacity: number) => {
     setPreviewSettings((currentSettings) => ({ ...currentSettings, opacity: nextOpacity }))
+  }, [])
+
+  const handleModelStructure = useCallback((regions: MaterialRegion[]) => {
+    setMaterialRegions(regions)
+    setSelectedMaterialRegionId((currentRegionId) => {
+      if (currentRegionId && regions.some((region) => region.id === currentRegionId)) {
+        return currentRegionId
+      }
+
+      return regions[0]?.id ?? null
+    })
+  }, [])
+
+  const handleMaterialRegionSelect = useCallback((regionId: string) => {
+    const region = materialRegions.find((item) => item.id === regionId)
+
+    setSelectedMaterialRegionId(regionId)
+    setEditorMessage(region
+      ? `${region.meshName} selected for material editing.`
+      : 'Material region selected.')
+  }, [materialRegions])
+
+  const updateSelectedMaterial = useCallback((partialSettings: Partial<MaterialSettings>) => {
+    const region = materialRegions.find((item) => item.id === selectedMaterialRegionId)
+
+    if (!region) {
+      return
+    }
+
+    historyRef.current.push({ decals, materialSettingsByRegion })
+    setMaterialSettingsByRegion((currentSettingsByRegion) => {
+      return {
+        ...currentSettingsByRegion,
+        [region.id]: {
+          ...(currentSettingsByRegion[region.id] ?? region.settings),
+          ...partialSettings,
+        },
+      }
+    })
+  }, [decals, materialRegions, materialSettingsByRegion, selectedMaterialRegionId])
+
+  const applyMaterialPreset = useCallback((settings: MaterialSettings, presetName: string) => {
+    updateSelectedMaterial(settings)
+    setEditorMessage(selectedMaterialRegion
+      ? `${presetName} applied to ${selectedMaterialRegion.meshName}.`
+      : 'Select a model region before applying a material.')
+  }, [selectedMaterialRegion, updateSelectedMaterial])
+
+  const exportMaterialConfig = useCallback(() => {
+    const config = {
+      model: modelName,
+      generatedAt: new Date().toISOString(),
+      regions: materialRegions.map((region) => ({
+        id: region.id,
+        meshName: region.meshName,
+        materialName: region.materialName,
+        materialIndex: region.materialIndex,
+        editableLevel: region.editableLevel,
+        hasGroups: region.hasGroups,
+        settings: materialSettingsByRegion[region.id] ?? region.settings,
+      })),
+    }
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+
+    link.href = url
+    link.download = 'mesh-graffiti-material-config.json'
+    link.click()
+    URL.revokeObjectURL(url)
+    setEditorMessage('Material configuration JSON exported.')
+  }, [materialRegions, materialSettingsByRegion, modelName])
+
+  const handleToolbarCommand = useCallback((command: string) => {
+    if (command === 'reset') {
+      const previousSnapshot = historyRef.current.pop()
+
+      if (!previousSnapshot) {
+        setEditorMessage('Nothing to undo yet.')
+        return
+      }
+
+      setDecals(previousSnapshot.decals)
+      setMaterialSettingsByRegion(previousSnapshot.materialSettingsByRegion)
+      setEditorMessage('Previous edit undone.')
+      return
+    }
+
+    setActiveCommand(command)
+    setCameraView(command)
+    setEditorMessage(`${command} camera view applied.`)
   }, [])
 
   useEffect(() => {
@@ -162,6 +316,40 @@ function App() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !selectedAssetId) {
+        return
+      }
+
+      setSelectedAssetId(null)
+      setEditorMessage('Sticker selection cleared. Hover the model to choose a material region.')
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedAssetId])
+
+  useEffect(() => {
+    const handleWheel = (event: WheelEvent) => {
+      if (!selectedAssetId || !event.altKey) {
+        return
+      }
+
+      event.preventDefault()
+      const direction = event.deltaY < 0 ? 1 : -1
+
+      setPreviewSettings((currentSettings) => ({
+        ...currentSettings,
+        size: clampDecalSize(currentSettings.size + direction * 0.04),
+      }))
+      setEditorMessage('Alt + mouse wheel adjusted the next decal size.')
+    }
+
+    window.addEventListener('wheel', handleWheel, { passive: false })
+    return () => window.removeEventListener('wheel', handleWheel)
+  }, [selectedAssetId])
 
   return (
     <main className="app-shell">
@@ -178,7 +366,7 @@ function App() {
         <div className="topbar-actions">
           <button className="ghost-button" type="button">
             <Eye size={16} />
-            Preview
+            {activeSceneMode}
           </button>
           <button className="primary-button" type="button" onClick={() => setExportRequestId((current) => current + 1)}>
             <Download size={16} />
@@ -230,6 +418,18 @@ function App() {
               Choose Model
             </label>
             <span className="supported-formats">Supports GLB, GLTF, OBJ, STL</span>
+            <div className="preset-models" aria-label="Preset models">
+              {modelPresets.map((preset) => (
+                <button
+                  className={modelUrl === preset.url ? 'preset-model active' : 'preset-model'}
+                  type="button"
+                  key={preset.name}
+                  onClick={() => handlePresetModelSelect(preset)}
+                >
+                  {preset.name}
+                </button>
+              ))}
+            </div>
           </div>
 
           <AssetPanel
@@ -250,7 +450,17 @@ function App() {
           />
         </aside>
 
-        <section className="stage">
+        <section
+          className="stage"
+          onWheelCapture={(event) => {
+            if (!selectedAssetId || !event.altKey) {
+              return
+            }
+
+            event.preventDefault()
+            event.stopPropagation()
+          }}
+        >
           <div className="viewport-status">
             <span className="live-dot" />
             {editorMessage}
@@ -261,12 +471,26 @@ function App() {
               Scene
             </span>
             <div>
-              {sceneModes.map((mode, index) => (
-                <button className={index === 1 ? 'scene-mode active' : 'scene-mode'} type="button" key={mode}>
+              {sceneModes.map((mode) => (
+                <button
+                  className={mode === activeSceneMode ? 'scene-mode active' : 'scene-mode'}
+                  type="button"
+                  key={mode}
+                  onClick={() => setActiveSceneMode(mode)}
+                >
                   {mode}
                 </button>
               ))}
             </div>
+          </div>
+          <div className="stage-export-panel" aria-label="Export model">
+            <span>
+              <Download size={15} />
+              Export
+            </span>
+            <button className="primary-button compact-export" type="button" onClick={() => setExportRequestId((current) => current + 1)}>
+              GLB
+            </button>
           </div>
           <Scene
             modelUrl={modelUrl}
@@ -276,12 +500,20 @@ function App() {
             selectedTextureUrl={selectedAsset?.url ?? null}
             canApplyTexture={Boolean(selectedAsset)}
             previewSettings={previewSettings}
+            materialSettingsByRegion={materialSettingsByRegion}
+            hoveredMaterialRegionId={hoveredMaterialRegionId}
             onCreateDecal={handleCreateDecal}
+            onModelStructure={handleModelStructure}
+            onMaterialRegionHover={setHoveredMaterialRegionId}
+            onMaterialRegionSelect={handleMaterialRegionSelect}
             onModelLoadStatus={handleModelLoadStatus}
             exportRequestId={exportRequestId}
             onExportComplete={setEditorMessage}
+            sceneMode={activeSceneMode}
+            lightingPreset={activeLightingPreset}
+            cameraView={cameraView}
           />
-          <Toolbar />
+          <Toolbar activeCommand={activeCommand} onCommand={handleToolbarCommand} />
           {selectedAsset && (
             <div className="decal-popover" aria-label="Next decal controls">
               <div className="decal-popover-header">
@@ -351,9 +583,10 @@ function App() {
                   const Icon = preset.icon
                   return (
                     <button
-                      className={preset.active ? 'lighting-preset active' : 'lighting-preset'}
+                      className={preset.name === activeLightingPreset ? 'lighting-preset active' : 'lighting-preset'}
                       type="button"
                       key={preset.name}
+                      onClick={() => setActiveLightingPreset(preset.name)}
                     >
                       <Icon size={16} />
                       <span>
@@ -381,44 +614,82 @@ function App() {
           </div>
 
           <div className="tabs">
-            <button className="tab active" type="button">Materials</button>
-            <button className="tab" type="button">Textures</button>
-            <button className="tab" type="button">Colors</button>
+            {editorTabs.map((tab) => (
+              <button
+                className={tab === activeEditorTab ? 'tab active' : 'tab'}
+                type="button"
+                key={tab}
+                onClick={() => setActiveEditorTab(tab)}
+              >
+                {tab}
+              </button>
+            ))}
           </div>
 
-          <section className="editor-section">
+          {activeEditorTab === 'Materials' && <section className="editor-section">
             <div className="section-title">
               <Palette size={16} />
               Material Library
             </div>
             <div className="library-grid">
-              {materials.map((material, index) => (
-                <button className="library-card" type="button" key={material}>
-                  <span className={`material-preview material-${index + 1}`} />
-                  <span>{material}</span>
+              {materialPresets.map((material) => (
+                <button
+                  className="library-card"
+                  type="button"
+                  key={material.name}
+                  onClick={() => applyMaterialPreset(material.settings, material.name)}
+                >
+                  <span className={`material-preview ${material.className}`} />
+                  <span>{material.name}</span>
                 </button>
               ))}
             </div>
-          </section>
+          </section>}
 
-          <section className="editor-section">
+          {activeEditorTab === 'Materials' && <section className="editor-section">
             <div className="section-title">
               <Layers size={16} />
-              Texture Library
+              Editable Regions
             </div>
-            <div className="texture-grid">
-              {textures.map((texture, index) => (
-                <button className={`texture-chip texture-${index + 1}`} type="button" key={texture}>
-                  {texture}
+            <div className="region-list">
+              {materialRegions.length > 0 ? materialRegions.map((region) => (
+                <button
+                  className={[
+                    'region-card',
+                    region.id === selectedMaterialRegionId ? 'active' : '',
+                    region.id === hoveredMaterialRegionId ? 'hovered' : '',
+                  ].filter(Boolean).join(' ')}
+                  type="button"
+                  key={region.id}
+                  onClick={() => setSelectedMaterialRegionId(region.id)}
+                >
+                  <span>
+                    <strong>{region.meshName}</strong>
+                    <small>{region.materialName}</small>
+                  </span>
+                  <em>{region.hasGroups ? `${region.groupCount} groups` : 'mesh'}</em>
                 </button>
-              ))}
+              )) : (
+                <p className="empty-control-copy">Load a model to inspect editable mesh and material areas.</p>
+              )}
             </div>
-          </section>
+          </section>}
 
-          <section className="editor-section">
+          {(activeEditorTab === 'Materials' || activeEditorTab === 'Colors') && <section className="editor-section">
             <div className="section-title">
               <Palette size={16} />
-              Popular Colors
+              Material Parameters
+            </div>
+            <div className="region-summary">
+              {selectedMaterialRegion ? (
+                <>
+                  <strong>{selectedMaterialRegion.meshName}</strong>
+                  <span>{selectedMaterialRegion.hasGroups ? 'Geometry groups detected. Editing the selected material slot.' : 'No geometry groups. Editing the whole mesh material.'}</span>
+                  <small>{selectedMaterialRegion.triangleCount.toLocaleString()} triangles / {selectedMaterialRegion.isMultiMaterial ? 'multi material' : 'single material'}</small>
+                </>
+              ) : (
+                <span>Select an editable region to tune material values.</span>
+              )}
             </div>
             <div className="swatch-row">
               {palette.map((color) => (
@@ -427,28 +698,95 @@ function App() {
                   style={{ backgroundColor: color }}
                   type="button"
                   aria-label={`Select color ${color}`}
+                  onClick={() => updateSelectedMaterial({ color })}
                   key={color}
                 />
               ))}
             </div>
             <div className="color-picker">
-              <div className="wheel" />
+              <label className="custom-color-control">
+                <span>Color</span>
+                <input
+                  type="color"
+                  value={selectedMaterialSettings?.color ?? '#92a0b6'}
+                  disabled={!selectedMaterialSettings}
+                  onChange={(event) => updateSelectedMaterial({ color: event.target.value })}
+                />
+              </label>
               <div className="color-sliders">
                 <label>
-                  Offset X
-                  <input type="range" min="-100" max="100" defaultValue="12" />
+                  Roughness
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={selectedMaterialSettings?.roughness ?? 0.72}
+                    disabled={!selectedMaterialSettings}
+                    onChange={(event) => updateSelectedMaterial({ roughness: Number(event.target.value) })}
+                  />
                 </label>
                 <label>
-                  Offset Y
-                  <input type="range" min="-100" max="100" defaultValue="-8" />
+                  Metalness
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={selectedMaterialSettings?.metalness ?? 0.02}
+                    disabled={!selectedMaterialSettings}
+                    onChange={(event) => updateSelectedMaterial({ metalness: Number(event.target.value) })}
+                  />
                 </label>
                 <label>
-                  Rotate
-                  <input type="range" min="0" max="360" defaultValue="24" />
+                  Opacity
+                  <input
+                    type="range"
+                    min="0.18"
+                    max="1"
+                    step="0.01"
+                    value={selectedMaterialSettings?.opacity ?? 1}
+                    disabled={!selectedMaterialSettings}
+                    onChange={(event) => updateSelectedMaterial({
+                      opacity: Number(event.target.value),
+                      transparent: Number(event.target.value) < 1,
+                    })}
+                  />
                 </label>
               </div>
             </div>
-          </section>
+            <button className="secondary-button config-button" type="button" onClick={exportMaterialConfig}>
+              <FileJson size={15} />
+              Export Material JSON
+            </button>
+          </section>}
+
+          {activeEditorTab === 'Textures' && <section className="editor-section">
+            <div className="section-title">
+              <Layers size={16} />
+              Texture Slots
+            </div>
+            <div className="texture-grid">
+              {textureSlots.map((slot, index) => (
+                <button
+                  className={[
+                    'texture-chip',
+                    `texture-${index + 1}`,
+                    slot.name === activeTextureSlot ? 'active' : '',
+                  ].filter(Boolean).join(' ')}
+                  type="button"
+                  key={slot.name}
+                  onClick={() => {
+                    setActiveTextureSlot(slot.name)
+                    setEditorMessage(`${slot.name} selected. Texture upload is reserved for the next milestone.`)
+                  }}
+                >
+                  <span>{slot.name}</span>
+                  <small>{slot.status}</small>
+                </button>
+              ))}
+            </div>
+          </section>}
 
           <section className="editor-section decal-controls">
             <div className="section-title">

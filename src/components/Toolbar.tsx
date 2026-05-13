@@ -1,26 +1,47 @@
-import { Move3D, RotateCw, Scale3D, Undo2 } from 'lucide-react'
+import { Box, RotateCw, Undo2, View } from 'lucide-react'
 
-const tools = [
-  { label: 'Move', icon: Move3D, active: true },
-  { label: 'Scale', icon: Scale3D },
-  { label: 'Rotate', icon: RotateCw },
-  { label: 'Reset', icon: Undo2 },
+const viewTools = [
+  { label: 'perspective', icon: View },
+  { label: 'two-point perspective', icon: RotateCw },
+  { label: 'orthogonal', icon: Box },
 ]
 
-export function Toolbar() {
+type ToolbarProps = {
+  activeCommand: string
+  onCommand: (command: string) => void
+}
+
+export function Toolbar({ activeCommand, onCommand }: ToolbarProps) {
   return (
-    <div className="toolbar" aria-label="Texture transform toolbar">
+    <div className="toolbar" aria-label="Camera and undo toolbar">
       <div className="toolbar-group">
-        {tools.map((tool) => {
+        {viewTools.map((tool) => {
           const Icon = tool.icon
+          const isActive = tool.label === activeCommand
+
           return (
-            <button className={tool.active ? 'tool-button active' : 'tool-button'} type="button" key={tool.label}>
+            <button
+              className={isActive ? 'tool-button active' : 'tool-button'}
+              type="button"
+              key={tool.label}
+              title={tool.label}
+              onClick={() => onCommand(tool.label)}
+            >
               <Icon size={16} />
               {tool.label}
             </button>
           )
         })}
       </div>
+      <button
+        className="tool-button reset-command"
+        type="button"
+        title="reset"
+        onClick={() => onCommand('reset')}
+      >
+        <Undo2 size={16} />
+        reset
+      </button>
     </div>
   )
 }

@@ -20,6 +20,27 @@ export type DecalSettings = {
   opacity: number
 }
 
+export type MaterialRegion = {
+  id: string
+  meshName: string
+  materialName: string
+  materialIndex: number | null
+  hasGroups: boolean
+  groupCount: number
+  triangleCount: number
+  isMultiMaterial: boolean
+  editableLevel: 'mesh' | 'material-group'
+  settings: MaterialSettings
+}
+
+export type MaterialSettings = {
+  color: string
+  roughness: number
+  metalness: number
+  opacity: number
+  transparent: boolean
+}
+
 export type EditorState = {
   mode: EditorMode
   selectedAssetId: string | null
