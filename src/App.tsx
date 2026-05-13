@@ -68,6 +68,33 @@ const lightingPresets = [
 ]
 const sceneModes = ['Solid', 'Grid', 'Preview']
 const editorTabs = ['Materials', 'Textures', 'Colors']
+const onboardingSteps = [
+  {
+    target: 'workflow',
+    title: 'Step 1 / Workflow',
+    body: 'Start from the workflow list. It shows the full creation order: import a model, choose or upload artwork, place decals, adjust, then export.',
+  },
+  {
+    target: 'model',
+    title: 'Step 2 / Model Source',
+    body: 'Custom model import lives here. You can choose your own GLB, GLTF, OBJ or STL, or switch between the preset models.',
+  },
+  {
+    target: 'assets',
+    title: 'Step 3 / Sticker Assets',
+    body: 'Use the preset stickers or upload your own image. While placing a decal, hold Alt and scroll the mouse wheel to resize the preview quickly.',
+  },
+  {
+    target: 'materials',
+    title: 'Step 4 / Surface Editor',
+    body: 'This area edits model material, color, roughness, metalness and opacity. Texture-based edits work best when the model has usable UV data.',
+  },
+  {
+    target: 'export',
+    title: 'Step 5 / Export GLB',
+    body: 'When the result looks right, export here. The model and placed decal meshes are saved as a GLB file for preview in other 3D software.',
+  },
+]
 const DECAL_SIZE_MIN = 0.08
 const DECAL_SIZE_MAX = 0.8
 const DECAL_SIZE_DEFAULT = DECAL_SIZE_MIN + (DECAL_SIZE_MAX - DECAL_SIZE_MIN) / 3
@@ -85,6 +112,7 @@ function App() {
   const [activeLightingPreset, setActiveLightingPreset] = useState('Studio')
   const [activeEditorTab, setActiveEditorTab] = useState('Materials')
   const [activeTextureSlot, setActiveTextureSlot] = useState(textureSlots[0].name)
+  const [onboardingStep, setOnboardingStep] = useState<number | null>(null)
   const [assets, setAssets] = useState<UploadedTextureAsset[]>(presetTextureAssets)
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
   const [modelUrl, setModelUrl] = useState<string | null>('/models/Suitcase.glb')
@@ -112,6 +140,7 @@ function App() {
   const selectedMaterialSettings = selectedMaterialRegion
     ? materialSettingsByRegion[selectedMaterialRegion.id] ?? selectedMaterialRegion.settings
     : null
+  const activeOnboardingStep = onboardingStep === null ? null : onboardingSteps[onboardingStep]
 
   useEffect(() => {
     assetsRef.current = assets
@@ -120,6 +149,35 @@ function App() {
   useEffect(() => {
     modelUrlRef.current = modelUrl
   }, [modelUrl])
+
+  useEffect(() => {
+    if (window.localStorage.getItem('mesh-graffiti-onboarding-complete') === 'true') {
+      return
+    }
+
+    setOnboardingStep(0)
+  }, [])
+
+  useEffect(() => {
+    if (activeOnboardingStep?.target === 'materials') {
+      setActiveEditorTab('Materials')
+    }
+  }, [activeOnboardingStep])
+
+  const advanceOnboarding = useCallback(() => {
+    setOnboardingStep((currentStep) => {
+      if (currentStep === null) {
+        return null
+      }
+
+      if (currentStep >= onboardingSteps.length - 1) {
+        window.localStorage.setItem('mesh-graffiti-onboarding-complete', 'true')
+        return null
+      }
+
+      return currentStep + 1
+    })
+  }, [])
 
   const handleModelUpload = useCallback((files: FileList | null) => {
     const file = files?.[0]
@@ -331,28 +389,19 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedAssetId])
 
-  useEffect(() => {
-    const handleWheel = (event: WheelEvent) => {
-      if (!selectedAssetId || !event.altKey) {
-        return
-      }
-
-      event.preventDefault()
-      const direction = event.deltaY < 0 ? 1 : -1
-
-      setPreviewSettings((currentSettings) => ({
-        ...currentSettings,
-        size: clampDecalSize(currentSettings.size + direction * 0.04),
-      }))
-      setEditorMessage('Alt + mouse wheel adjusted the next decal size.')
-    }
-
-    window.addEventListener('wheel', handleWheel, { passive: false })
-    return () => window.removeEventListener('wheel', handleWheel)
-  }, [selectedAssetId])
-
   return (
-    <main className="app-shell">
+    <main
+      className={onboardingStep === null ? 'app-shell' : 'app-shell onboarding-active'}
+      onClickCapture={(event) => {
+        if (onboardingStep === null) {
+          return
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+        advanceOnboarding()
+      }}
+    >
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark">
@@ -384,7 +433,7 @@ function App() {
             </button>
           </div>
 
-          <ol className="workflow-list">
+          <ol className={activeOnboardingStep?.target === 'workflow' ? 'workflow-list onboarding-target' : 'workflow-list'}>
             {workflowSteps.map((step, index) => {
               const Icon = step.icon
               return (
@@ -403,7 +452,7 @@ function App() {
             })}
           </ol>
 
-          <div className="import-card">
+          <div className={activeOnboardingStep?.target === 'model' ? 'import-card onboarding-target' : 'import-card'}>
             <div>
               <span className="eyebrow">Model Source</span>
               <h2>{modelName}</h2>
@@ -432,22 +481,24 @@ function App() {
             </div>
           </div>
 
-          <AssetPanel
-            assets={assets}
-            selectedAssetId={selectedAssetId}
-            onAssetUpload={handleAssetUpload}
-            onSelectAsset={(assetId) => {
-              setSelectedAssetId(assetId)
-              const asset = assets.find((item) => item.id === assetId)
-              if (asset) {
-                setPreviewSettings((currentSettings) => ({
-                  ...currentSettings,
-                  aspectRatio: asset.aspectRatio,
-                }))
-              }
-              setEditorMessage(asset ? `${asset.name} selected. Click the model to place it.` : editorMessage)
-            }}
-          />
+          <div className={activeOnboardingStep?.target === 'assets' ? 'asset-onboarding-frame onboarding-target' : 'asset-onboarding-frame'}>
+            <AssetPanel
+              assets={assets}
+              selectedAssetId={selectedAssetId}
+              onAssetUpload={handleAssetUpload}
+              onSelectAsset={(assetId) => {
+                setSelectedAssetId(assetId)
+                const asset = assets.find((item) => item.id === assetId)
+                if (asset) {
+                  setPreviewSettings((currentSettings) => ({
+                    ...currentSettings,
+                    aspectRatio: asset.aspectRatio,
+                  }))
+                }
+                setEditorMessage(asset ? `${asset.name} selected. Click the model to place it.` : editorMessage)
+              }}
+            />
+          </div>
         </aside>
 
         <section
@@ -459,6 +510,13 @@ function App() {
 
             event.preventDefault()
             event.stopPropagation()
+            const direction = event.deltaY < 0 ? 1 : -1
+
+            setPreviewSettings((currentSettings) => ({
+              ...currentSettings,
+              size: clampDecalSize(currentSettings.size + direction * 0.04),
+            }))
+            setEditorMessage('Alt + mouse wheel adjusted the next decal size.')
           }}
         >
           <div className="viewport-status">
@@ -483,7 +541,10 @@ function App() {
               ))}
             </div>
           </div>
-          <div className="stage-export-panel" aria-label="Export model">
+          <div
+            className={activeOnboardingStep?.target === 'export' ? 'stage-export-panel onboarding-target' : 'stage-export-panel'}
+            aria-label="Export model"
+          >
             <span>
               <Download size={15} />
               Export
@@ -605,7 +666,7 @@ function App() {
           </aside>
         </section>
 
-        <aside className="panel right-panel">
+        <aside className={activeOnboardingStep?.target === 'materials' ? 'panel right-panel onboarding-target' : 'panel right-panel'}>
           <div className="panel-heading">
             <span>Surface Editor</span>
             <button className="icon-button" type="button" aria-label="Open material library">
@@ -850,6 +911,18 @@ function App() {
           First scaffold ready
         </span>
       </footer>
+
+      {activeOnboardingStep && (
+        <>
+          <div className="onboarding-scrim" />
+          <aside className={`onboarding-card onboarding-card-${activeOnboardingStep.target}`}>
+            <span className="eyebrow">New user guide</span>
+            <strong>{activeOnboardingStep.title}</strong>
+            <p>{activeOnboardingStep.body}</p>
+            <small>Click anywhere to continue</small>
+          </aside>
+        </>
+      )}
 
     </main>
   )
