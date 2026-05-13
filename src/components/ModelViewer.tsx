@@ -288,33 +288,51 @@ function getDecalProjection(event: ThreeEvent<PointerEvent>, rotationOffset = 0)
 function getStableDecalSize(settings: DecalSettings): [number, number, number] {
   const height = settings.size
   const width = settings.size * settings.aspectRatio
-  const depth = Math.max(width, height) * 0.6
+  const depth = Math.max(width, height) * 0.42
 
   return [width, height, depth]
 }
 
 function DecalOrientationHelper({ decal }: { decal: SceneDecal }) {
   const rotation = useMemo(() => new Euler(...decal.rotation), [decal.rotation])
+  const width = decal.size[0]
+  const height = decal.size[1]
+  const depth = Math.max(decal.size[2] * 0.1, 0.018)
+  const borderThickness = Math.max(Math.min(width, height) * 0.035, 0.008)
+  const stemWidth = Math.max(borderThickness * 1.35, 0.012)
+  const arrowSize = Math.max(Math.min(width, height) * 0.16, 0.04)
+  const zOffset = Math.max(decal.size[2] * 0.06, 0.018)
 
   return (
     <group position={decal.position} rotation={rotation} renderOrder={30}>
-      <mesh position={[0, decal.size[1] * 0.58, decal.size[2] * 0.04]}>
-        <boxGeometry args={[decal.size[0] * 0.08, decal.size[1] * 0.28, 0.012]} />
-        <meshBasicMaterial color="#b7ff4a" transparent opacity={0.9} depthTest={false} />
+      <mesh position={[0, height / 2, zOffset]}>
+        <boxGeometry args={[width, borderThickness, depth]} />
+        <meshBasicMaterial color="#b7ff4a" transparent opacity={0.86} depthTest={false} />
       </mesh>
-      <mesh position={[0, decal.size[1] * 0.75, decal.size[2] * 0.04]} rotation={[0, 0, Math.PI / 4]}>
-        <boxGeometry args={[decal.size[0] * 0.12, decal.size[0] * 0.12, 0.012]} />
-        <meshBasicMaterial color="#00d084" transparent opacity={0.9} depthTest={false} />
+      <mesh position={[0, -height / 2, zOffset]}>
+        <boxGeometry args={[width, borderThickness, depth]} />
+        <meshBasicMaterial color="#b7ff4a" transparent opacity={0.62} depthTest={false} />
       </mesh>
-      <lineSegments>
-        <edgesGeometry args={[new DecalGeometry(
-          decal.targetMesh,
-          new Vector3(...decal.position),
-          new Euler(...decal.rotation),
-          new Vector3(...decal.size),
-        )]} />
-        <lineBasicMaterial color="#b7ff4a" transparent opacity={0.82} depthTest={false} />
-      </lineSegments>
+      <mesh position={[-width / 2, 0, zOffset]}>
+        <boxGeometry args={[borderThickness, height, depth]} />
+        <meshBasicMaterial color="#b7ff4a" transparent opacity={0.62} depthTest={false} />
+      </mesh>
+      <mesh position={[width / 2, 0, zOffset]}>
+        <boxGeometry args={[borderThickness, height, depth]} />
+        <meshBasicMaterial color="#b7ff4a" transparent opacity={0.62} depthTest={false} />
+      </mesh>
+      <mesh position={[0, height * 0.1, zOffset * 1.4]}>
+        <boxGeometry args={[stemWidth, height * 0.78, depth]} />
+        <meshBasicMaterial color="#00d084" transparent opacity={0.92} depthTest={false} />
+      </mesh>
+      <mesh position={[0, height * 0.56, zOffset * 1.55]}>
+        <coneGeometry args={[arrowSize, arrowSize * 1.35, 3]} />
+        <meshBasicMaterial color="#00f0a8" transparent opacity={0.96} depthTest={false} />
+      </mesh>
+      <mesh position={[0, 0, zOffset * 1.5]}>
+        <circleGeometry args={[Math.max(arrowSize * 0.42, 0.016), 24]} />
+        <meshBasicMaterial color="#d9ff72" transparent opacity={0.96} depthTest={false} />
+      </mesh>
     </group>
   )
 }

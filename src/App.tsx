@@ -50,6 +50,9 @@ const lightingPresets = [
   { name: 'Soft Night', detail: 'Low contrast', icon: Moon },
 ]
 const sceneModes = ['Solid', 'Grid', 'Preview']
+const DECAL_SIZE_MIN = 0.08
+const DECAL_SIZE_MAX = 0.8
+const DECAL_SIZE_DEFAULT = DECAL_SIZE_MIN + (DECAL_SIZE_MAX - DECAL_SIZE_MIN) / 3
 
 function App() {
   const [isLightingOpen, setIsLightingOpen] = useState(true)
@@ -62,7 +65,7 @@ function App() {
   const [decals, setDecals] = useState<SceneDecal[]>([])
   const [exportRequestId, setExportRequestId] = useState(0)
   const [previewSettings, setPreviewSettings] = useState<DecalSettings>({
-    size: 0.72,
+    size: DECAL_SIZE_DEFAULT,
     aspectRatio: 1,
     rotation: 0,
     opacity: 1,
@@ -291,9 +294,9 @@ function App() {
                 Size
                 <input
                   type="range"
-                  min="0.18"
-                  max="2.8"
-                  step="0.03"
+                  min={DECAL_SIZE_MIN}
+                  max={DECAL_SIZE_MAX}
+                  step="0.01"
                   value={previewSettings.size}
                   onChange={(event) => updateDecalScale(Number(event.target.value))}
                 />
@@ -458,9 +461,9 @@ function App() {
                   Next decal scale
                   <input
                     type="range"
-                    min="0.2"
-                    max="2.4"
-                    step="0.05"
+                    min={DECAL_SIZE_MIN}
+                    max={DECAL_SIZE_MAX}
+                    step="0.01"
                     value={previewSettings.size}
                     onChange={(event) => updateDecalScale(Number(event.target.value))}
                   />
